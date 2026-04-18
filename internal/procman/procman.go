@@ -113,18 +113,18 @@ func Run(o Opts) error {
 		prefix := padRight(name, maxNameLen) + " | "
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
-			logFile.Close()
+			_ = logFile.Close()
 			cancel()
 			return err
 		}
 		errPipe, err := cmd.StderrPipe()
 		if err != nil {
-			logFile.Close()
+			_ = logFile.Close()
 			cancel()
 			return err
 		}
 		if err := cmd.Start(); err != nil {
-			logFile.Close()
+			_ = logFile.Close()
 			cancel()
 			return fmt.Errorf("start %s: %w", name, err)
 		}
@@ -132,7 +132,7 @@ func Run(o Opts) error {
 		mu.Lock()
 		children[name] = cmd
 		mu.Unlock()
-		fmt.Fprintf(o.Stdout, "[ws-dev] started %s (pid %d): %s\n", name, cmd.Process.Pid, strings.Join(argv, " "))
+		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] started %s (pid %d): %s\n", name, cmd.Process.Pid, strings.Join(argv, " "))
 
 		wg.Add(2)
 		go func() {
@@ -147,14 +147,14 @@ func Run(o Opts) error {
 		go func(name string, c *exec.Cmd, lf *os.File) {
 			defer wg.Done()
 			err := c.Wait()
-			lf.Close()
+			_ = lf.Close()
 			mu.Lock()
 			delete(children, name)
 			mu.Unlock()
 			if err != nil {
-				fmt.Fprintf(o.Stdout, "[ws-dev] %s exited: %v\n", name, err)
+				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited: %v\n", name, err)
 			} else {
-				fmt.Fprintf(o.Stdout, "[ws-dev] %s exited cleanly\n", name)
+				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited cleanly\n", name)
 			}
 		}(name, cmd, logFile)
 	}
@@ -168,7 +168,7 @@ func Run(o Opts) error {
 
 	select {
 	case sig := <-sigCh:
-		fmt.Fprintf(o.Stdout, "[ws-dev] received %s, shutting down\n", sig)
+		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] received %s, shutting down\n", sig)
 	case <-allDone:
 		return nil
 	}
@@ -188,7 +188,7 @@ func Run(o Opts) error {
 	select {
 	case <-allDone:
 	case <-time.After(5 * time.Second):
-		fmt.Fprintln(o.Stdout, "[ws-dev] timeout, sending SIGKILL")
+		_, _ = fmt.Fprintln(o.Stdout, "[ws-dev] timeout, sending SIGKILL")
 		for _, c := range snapshot {
 			if c.Process != nil {
 				_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
