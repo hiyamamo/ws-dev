@@ -1,0 +1,32 @@
+# ws-dev workspace configuration.
+
+# Git URL of the repository to clone.
+repo: https://github.com/owner/repo
+
+# Log directory relative to each repos/<repo>-<label>/.
+# Default: log. Override with WS_DEV_LOG_DIR or --log-dir.
+log_dir: log
+
+# Command wrapper for tasks/processes (optional).
+# Example for direnv + mise:
+# exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
+
+# Processes started by `ws-dev server <label>`.
+# Template vars available in cmd: {{.Label}} {{.PortBase}} {{.Workspace}}
+processes:
+  # web:
+  #   cmd: "bundle exec rails s -b 0.0.0.0 -p {{.PortBase}}"
+  # worker:
+  #   cmd: "bin/rails resque:work"
+  #   env:
+  #     QUEUE: "*"
+
+# Tasks run by `ws-dev run <label> <task> [args...]`.
+tasks: {}
+  # console: "bundle exec rails console"
+  # bundle-install: "bundle install"
+
+# Paths under links/ that get symlinked into repos/<repo>-<label>/.
+links: []
+  # - .envrc
+  # - .claude/settings.local.json

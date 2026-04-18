@@ -1,5 +1,9 @@
 .DS_Store
-.envrc
 repos
-storage
 mcp/ws-dev/node_modules/
+
+# Go build artifacts
+/ws-dev
+/dist/
+*.test
+*.out
