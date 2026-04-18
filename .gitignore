@@ -1,0 +1,5 @@
+.DS_Store
+.envrc
+repos
+storage
+mcp/ws-dev/node_modules/
