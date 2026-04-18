@@ -4,69 +4,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリ概要
 
-このリポジトリは **ws-dev** ワークスペース。複数のリポジトリを並列に動かすための開発環境ラッパー。
+このリポジトリは **ws-dev CLI** の開発リポジトリ。Go 製の単一バイナリで、同一リポジトリを複数クローンして並列開発するワークフローを提供する。
 
-- `repos/<number>/` に各作業ブランチのクローンを配置
-- `storage/` と `.envrc` はシンボリックリンクで各クローンと共有
-- `mcp/ws-dev/` は各クローンの `log/` ディレクトリを操作する MCP サーバー
+- `cmd/ws-dev/` — エントリポイント（cobra ルート）
+- `internal/` — 各機能モジュール（下記）
+- `examples/` — 参考用の旧設定（Rails 向け Procfile/justfile、移行前の Node.js MCP 実装）
 
-## よく使うコマンド（just）
+## ビルドとテスト
 
 ```bash
-# 新しいワークスペース番号でクローン＆セットアップ
-just clone <number>
-
-# 開発サーバー起動（Rails + Resque + pnpm dev を foreman で同時起動）
-just dev <number>
-
-# Rails コンソール
-just rails-console <number>
-
-# bundle install / pnpm install
-just bundle-install <number>
-just pnpm-install <number>
-
-# ログをリアルタイム追跡
-just log-web <number>
-just log-worker <number>
+mise exec -- go build -o ws-dev ./cmd/ws-dev
+mise exec -- go test ./...
+mise exec -- go test ./internal/mcp -run TestSearchLog     # 単体テスト指定
 ```
 
-## アーキテクチャ
+Go は `mise` 経由で管理（`mise use -g go@latest` でインストール済み）。
 
-### repos/ 配下のワークスペース構成
+## パッケージ構成と責務
 
-`just clone <number>` で以下が自動構成される：
+| パッケージ | 責務 |
+|------------|------|
+| `internal/cmd` | cobra サブコマンド定義（init/clone/link/unlink/server/logs/run/mcp） |
+| `internal/config` | `ws-dev.yml` のパース、`RepoName()` は URL から basename 抽出 |
+| `internal/workspace` | `ws-dev.yml` 検出（cwd → 親へ遡上）、`RepoDir(label)` など |
+| `internal/links` | `links/` → `repos/<repo>-<label>/` へ相対シムリンク作成。既存ディレクトリは置換 |
+| `internal/tasks` | `exec_wrapper` を前置したコマンドを stdio 継承で実行 |
+| `internal/procman` | Procfile 相当の並列プロセス管理。`{{.Label}}` 等を text/template で展開、各プロセスを setpgid で独立 pgid に配置、SIGTERM/SIGKILL でクリーンアップ |
+| `internal/mcp` | stdio JSON-RPC の MCP サーバー実装（`list_logs` / `tail_log` / `truncate_log` / `search_log`） |
 
-1. `<REPO_URL>` からクローン → `repos/<number>/`
-2. シンボリックリンク設定：
-   - `.envrc` → `../../.envrc`（direnv 設定を共有）
-   - `storage/` → `../../storage/`（ActiveStorage ファイルを共有）
-   - `.claude/settings.local.json` → `../../../settings.local.json`（Claude Code 設定を共有）
-3. MCP サーバーをローカルスコープで登録（`claude mcp add ws-dev`）
+## 重要な設計ポイント
 
-### Procfile と foreman
+### サーバーは単一ラベル前提
 
-`just dev <number>` は `Procfile` を `sed` で加工して `/tmp/Procfile-inv-<number>` を生成し、プロセス名に番号を付けて foreman で起動する：
+`ws-dev server <label>` は `.ws-dev/server.pid` を読み、前回の ws-dev プロセスがまだ生きていれば `SIGTERM` で停止してから新プロセスを起動する。並列ラベル起動は想定していない（ポート衝突を避けるため）。
 
-- `web-<number>`: Rails サーバー（port 3015、ログは `log/web.log` に tee）
-- `worker-<number>`: Resque ワーカー（ログは `log/worker.log`）
-- `build-<number>`: pnpm dev（フロントエンドビルド）
+- `.ws-dev/server.pid` — 自身の PID
+- `.ws-dev/current-label` — 直近ラベル（`ws-dev logs` が省略時に参照）
 
-### MCP サーバー（ws-dev）
+### ログディレクトリ解決順
 
-`mcp/ws-dev/src/index.js` — Node.js + `@modelcontextprotocol/sdk` で実装。**起動ディレクトリ（各 `repos/<number>/`）の `log/` を操作する。**
+コマンドラインフラグ `--log-dir` → 環境変数 `WS_DEV_LOG_DIR` → `ws-dev.yml` の `log_dir` → デフォルト `log`。
 
-提供ツール：
+この順序は `server` / `logs` / `mcp` すべてで一貫している。`mcp` は `cwd` 基準で解決する（cwd は各クローンリポの中で実行される想定）。
 
-| ツール | 説明 |
-|--------|------|
-| `list_logs` | `log/*.log` の一覧（name, size, mtime） |
-| `tail_log` | 末尾 N 行を取得 |
-| `truncate_log` | ログを 0 バイトに切り詰め |
-| `search_log` | regex で検索（streaming、context 行対応） |
+### ディレクトリ命名
 
-MCP サーバーは各クローンのルートで `node ../../mcp/ws-dev/src/index.js` として起動するため、`process.cwd()` が `log/` の解決に使われる。
+`repos/<repo-name>-<label>/`。`<repo-name>` は `repo:` URL の basename（`.git` 除去込み）から推定。ユーザーが渡す `<label>` は短い名前（例: `fix-login`）で、CLI 内部でプレフィックスを付加。
 
-### mise + direnv
+### プロセスの template 展開
 
-各クローンは `direnv exec` と `mise exec` でツールバージョンを管理している（Ruby/Node のバージョンは `repos/<number>/` 側の設定に従う）。
+`processes.<name>.cmd` は Go の `text/template` で評価される：
+
+- `{{.Label}}` — ラベル
+- `{{.PortBase}}` — `--port-base` / `$WS_DEV_PORT_BASE` / デフォルト 3000
+- `{{.Workspace}}` — ワークスペース絶対パス
+
+展開後にシェル的ホワイトスペース分割（`tasks.fields`）で argv 化する。クォート対応は最小限（`"..."` / `'...'` のみ、エスケープ非対応）。
+
+## 手動検証のしかた
+
+```bash
+# サンプルワークスペースで一通り動かす
+mkdir -p /tmp/ws-play && cd /tmp/ws-play
+/path/to/ws-dev init sample && cd sample
+# ws-dev.yml を編集（repo を実リポに、processes を埋める）
+../ws-dev clone branch-a
+../ws-dev link branch-a
+../ws-dev server branch-a       # 別ターミナルで
+../ws-dev logs                  # 直近ラベル
+../ws-dev logs branch-a web -f  # follow
+../ws-dev run branch-a console  # tasks.console
+```
+
+MCP 単体テスト：
+```bash
+cd repos/<repo>-branch-a
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' | ws-dev mcp
+```
