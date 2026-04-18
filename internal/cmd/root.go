@@ -21,6 +21,7 @@ user-defined tasks, and a built-in MCP server for log operations.`,
 		newServerCmd(),
 		newLogsCmd(),
 		newRunCmd(),
+		newTasksCmd(),
 		newMcpCmd(),
 	)
 	return root
