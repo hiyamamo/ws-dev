@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/hiyamamo/ws-dev/internal/links"
 	"github.com/hiyamamo/ws-dev/internal/workspace"
-	"github.com/spf13/cobra"
 )
 
 func newLinkCmd() *cobra.Command {

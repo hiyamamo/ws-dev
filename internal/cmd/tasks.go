@@ -5,8 +5,9 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/hiyamamo/ws-dev/internal/workspace"
 	"github.com/spf13/cobra"
+
+	"github.com/hiyamamo/ws-dev/internal/workspace"
 )
 
 func newTasksCmd() *cobra.Command {
@@ -25,12 +26,12 @@ func newTasksCmd() *cobra.Command {
 			}
 			sort.Strings(names)
 			if len(names) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no tasks defined in ws-dev.yml")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no tasks defined in ws-dev.yml")
 				return nil
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			for _, name := range names {
-				fmt.Fprintf(w, "%s\t%s\n", name, ws.Config.Tasks[name])
+				_, _ = fmt.Fprintf(w, "%s\t%s\n", name, ws.Config.Tasks[name])
 			}
 			return w.Flush()
 		},

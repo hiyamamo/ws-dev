@@ -11,9 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/hiyamamo/ws-dev/internal/procman"
 	"github.com/hiyamamo/ws-dev/internal/workspace"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -95,7 +96,7 @@ func runServer(label string, portBase int, logDirFlag string) error {
 	if err := os.WriteFile(labelPath, []byte(label), 0o644); err != nil {
 		return err
 	}
-	defer os.Remove(pidPath)
+	defer func() { _ = os.Remove(pidPath) }()
 
 	if portBase == 0 {
 		if v := os.Getenv("WS_DEV_PORT_BASE"); v != "" {
@@ -133,17 +134,17 @@ func stopPrior(pidPath string) (bool, error) {
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil || pid <= 0 {
-		os.Remove(pidPath)
+		_ = os.Remove(pidPath)
 		return false, nil
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		os.Remove(pidPath)
+		_ = os.Remove(pidPath)
 		return false, nil
 	}
 	// Signal 0: check liveness.
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		os.Remove(pidPath)
+		_ = os.Remove(pidPath)
 		return false, nil
 	}
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
@@ -152,12 +153,12 @@ func stopPrior(pidPath string) (bool, error) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			os.Remove(pidPath)
+			_ = os.Remove(pidPath)
 			return true, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	_ = proc.Signal(syscall.SIGKILL)
-	os.Remove(pidPath)
+	_ = os.Remove(pidPath)
 	return true, nil
 }

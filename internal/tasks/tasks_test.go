@@ -9,10 +9,10 @@ import (
 
 func TestFields(t *testing.T) {
 	cases := map[string][]string{
-		"bundle exec rails console":       {"bundle", "exec", "rails", "console"},
-		`bundle exec "rails s -p 3000"`:   {"bundle", "exec", "rails s -p 3000"},
-		`echo 'hello world' foo`:          {"echo", "hello world", "foo"},
-		"  leading   and   trailing  ":    {"leading", "and", "trailing"},
+		"bundle exec rails console":     {"bundle", "exec", "rails", "console"},
+		`bundle exec "rails s -p 3000"`: {"bundle", "exec", "rails s -p 3000"},
+		`echo 'hello world' foo`:        {"echo", "hello world", "foo"},
+		"  leading   and   trailing  ":  {"leading", "and", "trailing"},
 	}
 	for in, want := range cases {
 		got := fields(in)
