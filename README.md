@@ -94,6 +94,3 @@ Each process receives the following environment variables:
 
 Register it in each clone's `.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary with `cwd` set to the repo.
 
-## Examples
-
-See `examples/rails/` for the Rails setup that this tool was extracted from.

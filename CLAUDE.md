@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `cmd/ws-dev/` — エントリポイント（cobra ルート）
 - `internal/` — 各機能モジュール（下記）
-- `examples/` — 参考用の旧設定（Rails 向け Procfile/justfile、移行前の Node.js MCP 実装）
 
 ## ビルドとテスト
 
