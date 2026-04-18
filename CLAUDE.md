@@ -17,7 +17,51 @@ mise exec -- go test ./...
 mise exec -- go test ./internal/mcp -run TestSearchLog     # 単体テスト指定
 ```
 
-Go は `mise` 経由で管理（`mise use -g go@latest` でインストール済み）。
+Go は `mise` 経由で管理（`mise use -g go@latest` でインストール済み）。`golangci-lint` / `goreleaser` も `.mise.toml` に固定されているので `mise install` で揃う。
+
+## Lint / Format
+
+`golangci-lint` に fmt/lint の両方を任せている（`go fmt` / `gofumpt` 単体は使わない）。Makefile 経由が基本：
+
+```bash
+make fmt        # golangci-lint fmt ./...
+make lint       # golangci-lint run ./...
+make vet        # go vet ./...
+make check      # fmt + vet + lint + test を一括
+```
+
+コード変更後は `make check` を通してから commit する。設定は `.golangci.yml`。
+
+## リリース
+
+GoReleaser + GitHub Actions で配布。`v*` タグを push すると `.github/workflows/release.yml` が走り、`.goreleaser.yaml` の定義に従って linux/darwin × amd64/arm64 のバイナリと checksum が GitHub Releases に上がる。
+
+- Windows はビルド対象外（`procman` が `syscall.Setpgid` / `syscall.Kill` に依存するため）
+- バージョン情報は ldflags で `internal/cmd.{version,commit,date}` に注入され、`ws-dev version` で確認できる
+
+ローカル検証：
+
+```bash
+make release-check      # .goreleaser.yaml の構文チェック
+make release-snapshot   # タグなしで dist/ にクロスビルド（動作確認用）
+make clean              # dist/ と ws-dev バイナリを削除
+```
+
+リリース手順：
+
+```bash
+# main が最新の状態で
+git tag v0.1.0
+git push origin v0.1.0
+# → Actions が走って Releases にアーティファクトが上がる
+```
+
+別PCでの取得：
+
+```bash
+gh release download v0.1.0 -R hiyamamo/ws-dev -p 'ws-dev_*_linux_amd64.tar.gz'
+tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
+```
 
 ## パッケージ構成と責務
 
