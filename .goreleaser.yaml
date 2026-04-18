@@ -1,0 +1,65 @@
+version: 2
+
+project_name: ws-dev
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ws-dev
+    main: ./cmd/ws-dev
+    binary: ws-dev
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/hiyamamo/ws-dev/internal/cmd.version={{.Version}}
+      - -X github.com/hiyamamo/ws-dev/internal/cmd.commit={{.Commit}}
+      - -X github.com/hiyamamo/ws-dev/internal/cmd.date={{.Date}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  draft: false
+  prerelease: auto
