@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hiyamamo/ws-dev/internal/workspace"
 	"github.com/spf13/cobra"
+
+	"github.com/hiyamamo/ws-dev/internal/workspace"
 )
 
 func newLogsCmd() *cobra.Command {
@@ -116,7 +117,7 @@ func tailLog(path string, lines int, follow bool) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := printLastLines(f, lines); err != nil {
 		return err
 	}

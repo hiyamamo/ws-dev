@@ -6,8 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/hiyamamo/ws-dev/internal/workspace"
 	"github.com/spf13/cobra"
+
+	"github.com/hiyamamo/ws-dev/internal/workspace"
 )
 
 func newCloneCmd() *cobra.Command {

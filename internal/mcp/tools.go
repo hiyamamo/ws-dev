@@ -64,7 +64,7 @@ func TailLog(logDir, name string, lines int) (*TailResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return nil, err
@@ -160,7 +160,7 @@ func SearchLog(logDir, name, pattern string, opts SearchOpts) (*SearchResult, er
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	res := &SearchResult{Path: path}
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
