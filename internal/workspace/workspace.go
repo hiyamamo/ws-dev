@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hiyamamo/ws-dev/internal/config"
 )
@@ -50,6 +51,47 @@ func FindFromCwd() (*Workspace, error) {
 // RepoDir returns the absolute path to repos/<repo-name>-<label>.
 func (w *Workspace) RepoDir(label string) string {
 	return filepath.Join(w.Root, "repos", w.Config.RepoName()+"-"+label)
+}
+
+// LabelFromDir returns the label inferred from dir when dir is inside
+// <root>/repos/<repo-name>-<label>/ (at any depth). The label must be
+// non-empty.
+func (w *Workspace) LabelFromDir(dir string) (string, bool) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	reposDir := filepath.Join(w.Root, "repos")
+	prefix := w.Config.RepoName() + "-"
+	cur := abs
+	for {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", false
+		}
+		if parent == reposDir {
+			base := filepath.Base(cur)
+			if !strings.HasPrefix(base, prefix) {
+				return "", false
+			}
+			label := strings.TrimPrefix(base, prefix)
+			if label == "" {
+				return "", false
+			}
+			return label, true
+		}
+		cur = parent
+	}
+}
+
+// LabelFromCwd is a convenience wrapper around LabelFromDir using the current
+// directory.
+func (w *Workspace) LabelFromCwd() (string, bool) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	return w.LabelFromDir(cwd)
 }
 
 // LinksDir returns the absolute path to links/.
