@@ -28,11 +28,11 @@ func newServerCmd() *cobra.Command {
 		logDir   string
 	)
 	c := &cobra.Command{
-		Use:   "server <label>",
-		Short: "Start configured processes for a label (stops any prior server first)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "server [<label>]",
+		Short: "Start configured processes for a label (stops any prior server first; label is inferred from cwd when omitted)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runServer(args[0], portBase, logDir)
+			return runServer(firstArg(args), portBase, logDir)
 		},
 	}
 	c.Flags().IntVar(&portBase, "port-base", 0, "Base port exposed as {{.PortBase}} / WS_DEV_PORT_BASE (default: 3000 or $WS_DEV_PORT_BASE)")
@@ -71,6 +71,10 @@ func newServerStopCmd() *cobra.Command {
 
 func runServer(label string, portBase int, logDirFlag string) error {
 	ws, err := workspace.FindFromCwd()
+	if err != nil {
+		return err
+	}
+	label, err = resolveLabel(ws, label)
 	if err != nil {
 		return err
 	}
