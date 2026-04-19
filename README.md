@@ -37,13 +37,15 @@ ws-dev mcp                        # stdio MCP server (run inside repos/<repo>-<l
 |---------|-------------|
 | `ws-dev init <name>` | Scaffold `<name>/` with `ws-dev.yml`, `repos/`, `links/`, `.gitignore`. |
 | `ws-dev clone <label>` | Clone the configured repo into `repos/<repo-name>-<label>/`. |
-| `ws-dev link <label>` | Symlink each path in `links/` to the matching path in the repo. |
-| `ws-dev unlink <label>` | Remove those symlinks (non-symlink files are left alone). |
-| `ws-dev server <label>` | Start `processes` in parallel. Any prior `ws-dev server` is stopped first. |
+| `ws-dev link [<label>]` | Symlink each path in `links/` to the matching path in the repo. |
+| `ws-dev unlink [<label>]` | Remove those symlinks (non-symlink files are left alone). |
+| `ws-dev server [<label>]` | Start `processes` in parallel. Any prior `ws-dev server` is stopped first. |
 | `ws-dev server stop` | Stop the current server. |
-| `ws-dev logs [<label>] [<name>]` | List `*.log` or tail a specific log. Label defaults to the most recent `server` run. |
-| `ws-dev run <label> <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
+| `ws-dev logs [<label>] [<name>]` | List `*.log` or tail a specific log. |
+| `ws-dev run [<label>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
 | `ws-dev mcp` | Run the stdio MCP server (log operations for `$PWD/$log_dir`). |
+
+`<label>` may be omitted when the command is run from inside `repos/<repo-name>-<label>/` (or any subdirectory) — it is inferred from the path. `ws-dev logs` also falls back to the most recent `ws-dev server` run when neither is available.
 
 Flags:
 - `--log-dir <path>` — override log directory (falls back to `$WS_DEV_LOG_DIR`, then `log_dir` in config, then `log`).

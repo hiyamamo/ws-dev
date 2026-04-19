@@ -12,28 +12,32 @@ import (
 
 func newLinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "link <label>",
-		Short: "Symlink files from links/ into repos/<repo-name>-<label>/",
-		Args:  cobra.ExactArgs(1),
+		Use:   "link [<label>]",
+		Short: "Symlink files from links/ into repos/<repo-name>-<label>/ (label is inferred from cwd when omitted)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runLink(args[0], false)
+			return runLink(firstArg(args), false)
 		},
 	}
 }
 
 func newUnlinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "unlink <label>",
-		Short: "Remove symlinks created by `link` from repos/<repo-name>-<label>/",
-		Args:  cobra.ExactArgs(1),
+		Use:   "unlink [<label>]",
+		Short: "Remove symlinks created by `link` from repos/<repo-name>-<label>/ (label is inferred from cwd when omitted)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runLink(args[0], true)
+			return runLink(firstArg(args), true)
 		},
 	}
 }
 
 func runLink(label string, undo bool) error {
 	ws, err := workspace.FindFromCwd()
+	if err != nil {
+		return err
+	}
+	label, err = resolveLabel(ws, label)
 	if err != nil {
 		return err
 	}
@@ -45,4 +49,23 @@ func runLink(label string, undo bool) error {
 		return links.Unlink(repoDir, ws.Config.Links)
 	}
 	return links.Link(ws.LinksDir(), repoDir, ws.Config.Links)
+}
+
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// resolveLabel returns the explicit label if non-empty; otherwise it tries to
+// infer the label from the current working directory.
+func resolveLabel(ws *workspace.Workspace, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if label, ok := ws.LabelFromCwd(); ok {
+		return label, nil
+	}
+	return "", fmt.Errorf("label not specified and current directory is not under repos/%s-<label>/", ws.Config.RepoName())
 }

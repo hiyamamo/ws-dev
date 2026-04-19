@@ -37,9 +37,13 @@ func newLogsCmd() *cobra.Command {
 				name = args[1]
 			}
 			if label == "" {
-				label, err = readCurrentLabel(ws)
-				if err != nil {
-					return err
+				if l, ok := ws.LabelFromCwd(); ok {
+					label = l
+				} else {
+					label, err = readCurrentLabel(ws)
+					if err != nil {
+						return err
+					}
 				}
 			}
 			repoDir := ws.RepoDir(label)
