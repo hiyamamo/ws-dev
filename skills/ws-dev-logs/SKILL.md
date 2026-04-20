@@ -5,13 +5,13 @@ description: Inspect and manage process logs produced by `ws-dev server` through
 
 # ws-dev-logs
 
-This skill guides Claude in using the four MCP tools that `ws-dev mcp` exposes for the current repo clone. Use it whenever the user is working inside a `ws-dev` workspace (`repos/<repo>-<label>/`) and wants to look at, search, or reset the logs produced by `ws-dev server`.
+Use this skill inside a `ws-dev` workspace (`repos/<repo>-<label>/`) to navigate crash logs, search for errors, and reset logs before retrying, via the four MCP tools that `ws-dev mcp` exposes.
 
 ## Prerequisites
 
 The MCP server must be registered in the clone's `.claude/settings.local.json`, pointing at the `ws-dev` binary with `cwd` set to the clone directory. If `list_logs`, `tail_log`, `truncate_log`, and `search_log` are not visible, ask the user to configure the MCP server per the `## MCP` section of the repo's README and retry.
 
-The server runs in the clone's current working directory. Its log directory resolves in this order: `--log-dir` flag > `$WS_DEV_LOG_DIR` > `log`. Tool `name` arguments are just the basename inside that directory (the `.log` suffix is appended automatically — `web` and `web.log` both work).
+The server runs in the clone's current working directory. Its log directory resolves in this order: `--log-dir` flag > `$WS_DEV_LOG_DIR` > `log`.
 
 ## Tool selection
 
@@ -74,4 +74,4 @@ All tools accept `name` as a string; the `.log` suffix is added if missing.
 - **Scope is one clone.** The MCP tools only see the log directory of the clone they run in. For cross-clone comparisons, the user must run Claude inside each clone separately.
 - **No live follow.** `tail_log` returns a snapshot. For continuous tailing, the terminal command `ws-dev logs <label> <name> -f` is the right answer.
 - **RE2, not PCRE.** Patterns passed to `search_log` are Go RE2: no backreferences, no lookaround. `(?i)` inline flag works and is equivalent to `ignore_case=true`.
-- **`truncate_log` frees disk in place.** The inode is preserved, so processes that hold the file open keep writing to it after truncation — this is usually what you want.
+- **`truncate_log` frees disk in place.** The inode is preserved, so processes that hold the file open keep writing to it after truncation.
