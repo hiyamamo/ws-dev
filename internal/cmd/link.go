@@ -46,7 +46,7 @@ func runLink(label string, undo bool) error {
 		return fmt.Errorf("repo dir %s not found (run `ws-dev clone %s` first)", repoDir, label)
 	}
 	if undo {
-		return links.Unlink(repoDir, ws.Config.Links)
+		return links.Unlink(ws.LinksDir(), repoDir, ws.Config.Links)
 	}
 	return links.Link(ws.LinksDir(), repoDir, ws.Config.Links)
 }

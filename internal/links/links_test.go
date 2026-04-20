@@ -60,13 +60,129 @@ func TestLinkAndUnlink(t *testing.T) {
 	}
 
 	// Unlink should remove all symlinks.
-	if err := Unlink(repoDir, entries); err != nil {
+	if err := Unlink(linksDir, repoDir, entries); err != nil {
 		t.Fatal(err)
 	}
 	for _, rel := range entries {
 		if _, err := os.Lstat(filepath.Join(repoDir, rel)); err == nil {
 			t.Errorf("%s still exists after Unlink", rel)
 		}
+	}
+}
+
+func TestLinkContentsMode(t *testing.T) {
+	ws := t.TempDir()
+	linksDir := filepath.Join(ws, "links")
+	repoDir := filepath.Join(ws, "repo")
+
+	uploadsSrc := filepath.Join(linksDir, "storage", "uploads")
+	if err := os.MkdirAll(uploadsSrc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(uploadsSrc, "a"), []byte("A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(uploadsSrc, "b"), []byte("B"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadsTarget := filepath.Join(repoDir, "storage", "uploads")
+	if err := os.MkdirAll(uploadsTarget, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitkeep := filepath.Join(uploadsTarget, ".gitkeep")
+	if err := os.WriteFile(gitkeep, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries := []string{"storage/uploads/"}
+	if err := Link(linksDir, repoDir, entries); err != nil {
+		t.Fatalf("Link failed: %v", err)
+	}
+
+	// Parent directory must remain a real directory.
+	dirInfo, err := os.Lstat(uploadsTarget)
+	if err != nil {
+		t.Fatalf("uploads target missing: %v", err)
+	}
+	if dirInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("uploads target is a symlink, want real dir")
+	}
+
+	// .gitkeep stays as a regular file.
+	if info, err := os.Lstat(gitkeep); err != nil {
+		t.Fatalf(".gitkeep missing: %v", err)
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf(".gitkeep became a symlink")
+	}
+
+	for _, name := range []string{"a", "b"} {
+		p := filepath.Join(uploadsTarget, name)
+		info, err := os.Lstat(p)
+		if err != nil {
+			t.Fatalf("missing %s: %v", p, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%s is not a symlink", p)
+		}
+	}
+
+	if data, err := os.ReadFile(filepath.Join(uploadsTarget, "a")); err != nil || string(data) != "A" {
+		t.Errorf("a resolve failed: %q, %v", data, err)
+	}
+
+	if err := Unlink(linksDir, repoDir, entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a", "b"} {
+		if _, err := os.Lstat(filepath.Join(uploadsTarget, name)); err == nil {
+			t.Errorf("%s still exists after Unlink", name)
+		}
+	}
+	if _, err := os.Lstat(uploadsTarget); err != nil {
+		t.Errorf("parent dir removed by Unlink: %v", err)
+	}
+	if _, err := os.Lstat(gitkeep); err != nil {
+		t.Errorf(".gitkeep removed by Unlink: %v", err)
+	}
+}
+
+func TestLinkContentsSkipsRealFileCollision(t *testing.T) {
+	ws := t.TempDir()
+	linksDir := filepath.Join(ws, "links")
+	repoDir := filepath.Join(ws, "repo")
+
+	srcDir := filepath.Join(linksDir, "shared")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "a"), []byte("from-links"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	targetDir := filepath.Join(repoDir, "shared")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	collide := filepath.Join(targetDir, "a")
+	if err := os.WriteFile(collide, []byte("real"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Link(linksDir, repoDir, []string{"shared/"}); err != nil {
+		t.Fatalf("Link failed: %v", err)
+	}
+
+	info, err := os.Lstat(collide)
+	if err != nil {
+		t.Fatalf("collision file missing: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("real file was replaced with symlink")
+	}
+	data, err := os.ReadFile(collide)
+	if err != nil || string(data) != "real" {
+		t.Errorf("real file modified: %q, %v", data, err)
 	}
 }
 
