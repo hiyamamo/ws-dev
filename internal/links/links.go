@@ -13,9 +13,9 @@ import (
 // entries are paths relative to linksDir and must exist there.
 // Intermediate directories in the target path are created as needed.
 //
-// A trailing "/" on an entry switches it to contents mode: each immediate
-// child of linksDir/<entry> is symlinked into repoDir/<entry>, and the target
-// directory itself is left in place so tracked files like .gitkeep survive.
+// A trailing "/" puts an entry in contents mode: each immediate child of
+// linksDir/<entry> is symlinked into repoDir/<entry>, leaving the parent
+// directory intact so tracked files like .gitkeep survive.
 func Link(linksDir, repoDir string, entries []string) error {
 	for _, rel := range entries {
 		clean, contents := contentsMode(rel)
@@ -35,7 +35,7 @@ func Link(linksDir, repoDir string, entries []string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if err := replaceWithSymlink(src, target); err != nil {
+		if err := writeSymlink(src, target, false); err != nil {
 			return fmt.Errorf("link %s -> %s: %w", target, src, err)
 		}
 	}
@@ -75,8 +75,6 @@ func Unlink(linksDir, repoDir string, entries []string) error {
 	return nil
 }
 
-// contentsMode reports whether rel targets directory contents (trailing "/").
-// Returns the cleaned relative path and a flag.
 func contentsMode(rel string) (string, bool) {
 	if strings.HasSuffix(rel, "/") {
 		return strings.TrimRight(rel, "/"), true
@@ -84,16 +82,7 @@ func contentsMode(rel string) (string, bool) {
 	return rel, false
 }
 
-// linkContents symlinks each immediate child of srcDir into targetDir.
-// targetDir itself is left in place so tracked files like .gitkeep survive.
 func linkContents(srcDir, targetDir string) error {
-	info, err := os.Stat(srcDir)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", srcDir)
-	}
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return err
 	}
@@ -102,9 +91,7 @@ func linkContents(srcDir, targetDir string) error {
 		return err
 	}
 	for _, e := range entries {
-		childSrc := filepath.Join(srcDir, e.Name())
-		childTarget := filepath.Join(targetDir, e.Name())
-		if err := symlinkOrSkip(childSrc, childTarget); err != nil {
+		if err := writeSymlink(filepath.Join(srcDir, e.Name()), filepath.Join(targetDir, e.Name()), true); err != nil {
 			return err
 		}
 	}
@@ -139,7 +126,11 @@ func unlinkContents(srcDir, targetDir string) error {
 	return nil
 }
 
-func replaceWithSymlink(src, target string) error {
+// writeSymlink creates a relative symlink at target pointing to src. Stale
+// symlinks at target are replaced. If preserveReal is true, a real file or
+// directory at target is left in place with a stderr warning; otherwise it
+// is removed first.
+func writeSymlink(src, target string, preserveReal bool) error {
 	info, err := os.Lstat(target)
 	if err == nil {
 		switch {
@@ -147,6 +138,9 @@ func replaceWithSymlink(src, target string) error {
 			if err := os.Remove(target); err != nil {
 				return err
 			}
+		case preserveReal:
+			fmt.Fprintf(os.Stderr, "skip %s (exists as real file)\n", target)
+			return nil
 		case info.IsDir():
 			if err := os.RemoveAll(target); err != nil {
 				return err
@@ -166,31 +160,6 @@ func replaceWithSymlink(src, target string) error {
 	return os.Symlink(rel, target)
 }
 
-// symlinkOrSkip creates a relative symlink at target pointing to src.
-// If target already exists as a real file/dir, it is preserved and a
-// warning is printed to stderr. Stale symlinks are replaced.
-func symlinkOrSkip(src, target string) error {
-	info, err := os.Lstat(target)
-	if err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			if err := os.Remove(target); err != nil {
-				return err
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "skip %s (exists as real file)\n", target)
-			return nil
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	rel, err := relativeLink(src, target)
-	if err != nil {
-		return err
-	}
-	return os.Symlink(rel, target)
-}
-
-// relativeLink returns a path from target's directory to src.
 func relativeLink(src, target string) (string, error) {
 	absSrc, err := filepath.Abs(src)
 	if err != nil {
