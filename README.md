@@ -107,3 +107,18 @@ Each process receives the following environment variables:
 
 Register it in each clone's `.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary with `cwd` set to the repo.
 
+### Claude Code skill
+
+This repo ships an agent-skill at `skills/ws-dev-logs/` that teaches Claude when to reach for each MCP tool and how to chain them (crash investigation, error search, reset-and-retry). Install it with [`gh skill`](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/) (GitHub CLI v2.90.0+):
+
+```bash
+# Per-clone (recommended):
+cd repos/<repo>-<label>
+gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope project
+
+# Or once, globally for all Claude Code sessions:
+gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope user
+```
+
+Provenance (repo, ref, tree SHA) is written into the installed `SKILL.md`'s frontmatter, so `gh skill update` can pick up changes later.
+
