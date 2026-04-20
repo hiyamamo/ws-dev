@@ -8,6 +8,17 @@ Parallel workspace manager for multi-clone development. Clone the same repositor
 go install github.com/hiyamamo/ws-dev/cmd/ws-dev@latest
 ```
 
+Or download a prebuilt binary from GitHub Releases with `gh`:
+
+```bash
+# linux / amd64 の例。必要に応じて OS / arch を置き換える（linux|darwin × amd64|arm64）
+gh release download -R hiyamamo/ws-dev -p 'ws-dev_*_linux_amd64.tar.gz'
+tar xzf ws-dev_*_linux_amd64.tar.gz
+sudo mv ws-dev /usr/local/bin/
+```
+
+特定バージョンを取る場合は `gh release download v0.1.0 -R hiyamamo/ws-dev -p '...'` のようにタグを指定する。
+
 Or build from source:
 
 ```bash
