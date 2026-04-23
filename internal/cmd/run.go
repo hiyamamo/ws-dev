@@ -12,7 +12,7 @@ import (
 
 func newRunCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:                "run <task> [<label>] [args...]",
+		Use:                "run <task> [args...] [<label>]",
 		Short:              "Run a configured task inside repos/<repo-name>-<label>/ (label is inferred from cwd when omitted)",
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
@@ -35,22 +35,21 @@ func newRunCmd() *cobra.Command {
 	return c
 }
 
-// splitRunArgs parses the `<task> [<label>] [args...]` form. The first arg is
-// always the task. When cwd is inside a repo dir, the label is inferred from
-// cwd unless args[1] names an existing repo dir (explicit override). When cwd
-// is outside a repo dir, args[1] is required and used as the label.
+// splitRunArgs parses the `<task> [args...] [<label>]` form. The first arg is
+// always the task. If the last arg names an existing repos/<repo-name>-<arg>/
+// directory, it is taken as the label and the args between become
+// pass-through. Otherwise the label is inferred from cwd (when inside a repo
+// dir) and all remaining args become pass-through.
 func splitRunArgs(ws *workspace.Workspace, args []string) (label, task string, extra []string, err error) {
 	task = args[0]
-	if cwdLabel, ok := ws.LabelFromCwd(); ok {
-		if len(args) >= 2 {
-			if _, statErr := os.Stat(ws.RepoDir(args[1])); statErr == nil {
-				return args[1], task, args[2:], nil
-			}
+	if len(args) >= 2 {
+		last := args[len(args)-1]
+		if _, statErr := os.Stat(ws.RepoDir(last)); statErr == nil {
+			return last, task, args[1 : len(args)-1], nil
 		}
+	}
+	if cwdLabel, ok := ws.LabelFromCwd(); ok {
 		return cwdLabel, task, args[1:], nil
 	}
-	if len(args) < 2 {
-		return "", "", nil, fmt.Errorf("usage: ws-dev run <task> <label> [args...] (label may be omitted when run inside repos/<repo-name>-<label>/)")
-	}
-	return args[1], task, args[2:], nil
+	return "", "", nil, fmt.Errorf("usage: ws-dev run <task> [args...] <label> (label may be omitted when run inside repos/<repo-name>-<label>/)")
 }

@@ -38,7 +38,7 @@ ws-dev link branch-a
 ws-dev server branch-a            # starts all processes, streams logs
 ws-dev logs                       # list logs for the most recent label
 ws-dev logs branch-a web -f       # follow a specific log
-ws-dev run console branch-a       # run a task defined in ws-dev.yml
+ws-dev run console branch-a       # run a task defined in ws-dev.yml (label at the end)
 ws-dev mcp                        # stdio MCP server (run inside repos/<repo>-<label>)
 ```
 
@@ -53,7 +53,7 @@ ws-dev mcp                        # stdio MCP server (run inside repos/<repo>-<l
 | `ws-dev server [<label>]` | Start `processes` in parallel. Any prior `ws-dev server` is stopped first. |
 | `ws-dev server stop` | Stop the current server. |
 | `ws-dev logs [<label>] [<name>]` | List `*.log` or tail a specific log. |
-| `ws-dev run <task> [<label>] [args...]` | Run a task defined under `tasks:`; extra args pass through. |
+| `ws-dev run <task> [args...] [<label>]` | Run a task defined under `tasks:`; extra args pass through. Label goes last and is detected by matching an existing `repos/<repo-name>-<arg>/`. |
 | `ws-dev mcp` | Run the stdio MCP server (log operations for `$PWD/$log_dir`). |
 
 `<label>` may be omitted when the command is run from inside `repos/<repo-name>-<label>/` (or any subdirectory) — it is inferred from the path. `ws-dev logs` also falls back to the most recent `ws-dev server` run when neither is available.
