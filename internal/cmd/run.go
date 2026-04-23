@@ -12,7 +12,7 @@ import (
 
 func newRunCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:                "run [<label>] <task> [args...]",
+		Use:                "run <task> [<label>] [args...]",
 		Short:              "Run a configured task inside repos/<repo-name>-<label>/ (label is inferred from cwd when omitted)",
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
@@ -35,23 +35,22 @@ func newRunCmd() *cobra.Command {
 	return c
 }
 
-// splitRunArgs decides whether the first arg is a label or a task. When cwd is
-// inside a repo dir, the first arg is treated as the task (label inferred from
-// cwd). If the first arg isn't a defined task and args[1] is, fall back to the
-// explicit `<label> <task>` form.
+// splitRunArgs parses the `<task> [<label>] [args...]` form. The first arg is
+// always the task. When cwd is inside a repo dir, the label is inferred from
+// cwd unless args[1] names an existing repo dir (explicit override). When cwd
+// is outside a repo dir, args[1] is required and used as the label.
 func splitRunArgs(ws *workspace.Workspace, args []string) (label, task string, extra []string, err error) {
+	task = args[0]
 	if cwdLabel, ok := ws.LabelFromCwd(); ok {
-		_, firstIsTask := ws.Config.Tasks[args[0]]
-		if firstIsTask || len(args) < 2 {
-			return cwdLabel, args[0], args[1:], nil
+		if len(args) >= 2 {
+			if _, statErr := os.Stat(ws.RepoDir(args[1])); statErr == nil {
+				return args[1], task, args[2:], nil
+			}
 		}
-		if _, secondIsTask := ws.Config.Tasks[args[1]]; secondIsTask {
-			return args[0], args[1], args[2:], nil
-		}
-		return cwdLabel, args[0], args[1:], nil
+		return cwdLabel, task, args[1:], nil
 	}
 	if len(args) < 2 {
-		return "", "", nil, fmt.Errorf("usage: ws-dev run <label> <task> [args...] (label may be omitted when run inside repos/<repo-name>-<label>/)")
+		return "", "", nil, fmt.Errorf("usage: ws-dev run <task> <label> [args...] (label may be omitted when run inside repos/<repo-name>-<label>/)")
 	}
-	return args[0], args[1], args[2:], nil
+	return args[1], task, args[2:], nil
 }

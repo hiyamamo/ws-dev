@@ -116,7 +116,7 @@ mkdir -p /tmp/ws-play && cd /tmp/ws-play
 ../ws-dev server branch-a       # in another terminal
 ../ws-dev logs                  # most recent label
 ../ws-dev logs branch-a web -f  # follow
-../ws-dev run branch-a console  # tasks.console
+../ws-dev run console branch-a  # tasks.console
 ```
 
 MCP standalone test:
