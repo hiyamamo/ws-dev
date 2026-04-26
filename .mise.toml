@@ -2,3 +2,5 @@
 go = "latest"
 golangci-lint = "latest"
 goreleaser = "latest"
+lefthook = "latest"
+node = "latest"

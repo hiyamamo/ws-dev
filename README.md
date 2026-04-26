@@ -25,6 +25,17 @@ Or build from source:
 go build -o ws-dev ./cmd/ws-dev
 ```
 
+## Development setup
+
+After cloning this repo, install the toolchain via `mise` and enable the lefthook git hooks (runs `secretlint` on staged files before each commit):
+
+```bash
+mise install
+mise exec -- lefthook install
+```
+
+`mise install` provisions Go, golangci-lint, goreleaser, lefthook, and Node.js (used by `npx secretlint`).
+
 ## Quick start
 
 ```bash
