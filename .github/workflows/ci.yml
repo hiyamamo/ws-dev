@@ -42,3 +42,17 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.4
+
+  secretlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Run secretlint
+        run: npx --yes -p secretlint -p @secretlint/secretlint-rule-preset-recommend secretlint "**/*"

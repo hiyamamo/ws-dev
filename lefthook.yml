@@ -1,0 +1,6 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secretlint
+      glob: "*"
+      run: mise exec -- npx --yes -p secretlint -p @secretlint/secretlint-rule-preset-recommend secretlint --maskSecrets {staged_files}
