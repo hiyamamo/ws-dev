@@ -7,3 +7,6 @@ mcp/ws-dev/node_modules/
 /dist/
 *.test
 *.out
+
+# Claude Code local settings
+.claude/settings.local.json
