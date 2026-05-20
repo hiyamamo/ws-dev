@@ -20,6 +20,7 @@ settings live in ~/.config/ws-dev/config.yml, keyed by the repo's git remote.`,
 		newRunCmd(),
 		newTasksCmd(),
 		newMcpCmd(),
+		newUpdateCmd(),
 		newVersionCmd(),
 	)
 	return root
