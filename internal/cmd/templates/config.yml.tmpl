@@ -1,0 +1,31 @@
+# ws-dev configuration (~/.config/ws-dev/config.yml)
+#
+# One entry per repository, keyed by its git remote URL. ssh and https forms of
+# the same repo are matched interchangeably, so either of these keys works:
+#   git@github.com:owner/repo.git
+#   https://github.com/owner/repo
+#
+# Run `ws-dev init` inside a repo to print the key to add for that repo.
+
+repos:
+  # github.com/owner/repo:
+  #   # Log directory relative to each worktree. Default: log.
+  #   log_dir: log
+  #
+  #   # Optional wrapper applied to every process/task.
+  #   # exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
+  #
+  #   # Processes started by `ws-dev server <worktree>`.
+  #   # Template vars in cmd: {{.Worktree}} {{.PortBase}} {{.Root}} {{.Dir}}
+  #   processes:
+  #     web:
+  #       cmd: "bundle exec rails s -b 0.0.0.0 -p {{.PortBase}}"
+  #     worker:
+  #       cmd: "bin/rails resque:work"
+  #       env:
+  #         QUEUE: "*"
+  #
+  #   # Tasks run by `ws-dev run <worktree> <task> [args...]`.
+  #   tasks:
+  #     console: "bundle exec rails console"
+  #     bundle-install: "bundle install"

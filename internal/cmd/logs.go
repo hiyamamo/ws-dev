@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/hiyamamo/ws-dev/internal/workspace"
 )
 
 func newLogsCmd() *cobra.Command {
@@ -21,62 +19,62 @@ func newLogsCmd() *cobra.Command {
 		nLines int
 	)
 	c := &cobra.Command{
-		Use:   "logs [<label>] [<name>]",
-		Short: "List logs or tail a specific log (label defaults to most recent server run)",
+		Use:   "logs [<worktree>] [<name>]",
+		Short: "List logs or tail a specific log (worktree defaults to cwd, then most recent server run)",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			ws, err := workspace.FindFromCwd()
+			rc, err := loadRepoCtx()
 			if err != nil {
 				return err
 			}
-			label, name := "", ""
+			worktreeArg, name := "", ""
 			if len(args) >= 1 {
-				label = args[0]
+				worktreeArg = args[0]
 			}
 			if len(args) == 2 {
 				name = args[1]
 			}
-			if label == "" {
-				if l, ok := ws.LabelFromCwd(); ok {
-					label = l
-				} else {
-					label, err = readCurrentLabel(ws)
-					if err != nil {
-						return err
-					}
+			// Precedence: explicit arg > most recent server run > cwd.
+			// Only one server runs per repo, so the recorded run is almost
+			// always the log set the user wants.
+			if worktreeArg == "" {
+				if l, rerr := readCurrentWorktree(); rerr == nil {
+					worktreeArg = l
 				}
 			}
-			repoDir := ws.RepoDir(label)
-			if _, err := os.Stat(repoDir); err != nil {
-				return fmt.Errorf("repo dir %s not found", repoDir)
+			_, dir, err := rc.resolveWorktree(worktreeArg)
+			if err != nil {
+				return err
 			}
-			logAbs := filepath.Join(repoDir, ws.ResolveLogDir(logDir))
+			logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDir))
 			if name == "" {
 				return listLogs(logAbs)
 			}
 			return tailLog(filepath.Join(logAbs, name+".log"), nLines, follow)
 		},
 	}
-	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to repo (overrides config and $WS_DEV_LOG_DIR)")
+	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
 	c.Flags().BoolVarP(&follow, "follow", "f", false, "Follow the log (tail -f)")
 	c.Flags().IntVarP(&nLines, "lines", "n", 100, "Number of lines to show from the end")
 	return c
 }
 
-func readCurrentLabel(ws *workspace.Workspace) (string, error) {
-	stateDir, err := ws.StateDir()
+// readCurrentWorktree returns the worktree name recorded by the most recent
+// `ws-dev server` run.
+func readCurrentWorktree() (string, error) {
+	sdir, err := stateDir()
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(filepath.Join(stateDir, labelFileName))
+	data, err := os.ReadFile(filepath.Join(sdir, worktreeFileName))
 	if err != nil {
-		return "", fmt.Errorf("no label specified and no recent server run recorded: %w", err)
+		return "", err
 	}
-	label := strings.TrimSpace(string(data))
-	if label == "" {
-		return "", fmt.Errorf("no label specified and no recent server run recorded")
+	name := strings.TrimSpace(string(data))
+	if name == "" {
+		return "", fmt.Errorf("no recent server run recorded")
 	}
-	return label, nil
+	return name, nil
 }
 
 func listLogs(dir string) error {

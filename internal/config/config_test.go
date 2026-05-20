@@ -6,35 +6,38 @@ import (
 	"testing"
 )
 
-func TestInferRepoName(t *testing.T) {
+func TestNormalizeRemote(t *testing.T) {
 	cases := map[string]string{
-		"https://github.com/C-FO/freee-invoice":     "freee-invoice",
-		"https://github.com/C-FO/freee-invoice.git": "freee-invoice",
-		"git@github.com:C-FO/freee-invoice.git":     "freee-invoice",
-		"git@github.com:owner/repo":                 "repo",
-		"https://example.com/a/b/c":                 "c",
+		"git@github.com:owner/repo.git":       "github.com/owner/repo",
+		"git@github.com:owner/repo":           "github.com/owner/repo",
+		"https://github.com/owner/repo":       "github.com/owner/repo",
+		"https://github.com/owner/repo.git":   "github.com/owner/repo",
+		"https://github.com/owner/repo.git/":  "github.com/owner/repo",
+		"ssh://git@github.com/owner/repo.git": "github.com/owner/repo",
+		"git@github.com:Owner/Repo.git":       "github.com/owner/repo",
+		"https://user@example.com/a/b/c":      "example.com/a/b/c",
 	}
 	for in, want := range cases {
-		if got := inferRepoName(in); got != want {
-			t.Errorf("inferRepoName(%q) = %q, want %q", in, got, want)
+		if got := NormalizeRemote(in); got != want {
+			t.Errorf("NormalizeRemote(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-func TestLoad(t *testing.T) {
+func TestLoadAndLookup(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "ws-dev.yml")
-	src := `repo: https://github.com/owner/repo
-log_dir: logs
-processes:
-  web:
-    cmd: "echo hi"
-    env:
-      PORT: "3000"
-tasks:
-  hello: "echo hi"
-links:
-  - .envrc
+	path := filepath.Join(dir, "config.yml")
+	src := `repos:
+  github.com/owner/repo:
+    log_dir: logs
+    exec_wrapper: ["mise", "exec", "--"]
+    processes:
+      web:
+        cmd: "echo hi"
+        env:
+          PORT: "3000"
+    tasks:
+      hello: "echo hi"
 `
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
@@ -43,30 +46,38 @@ links:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.RepoName() != "repo" {
-		t.Errorf("RepoName = %q, want repo", c.RepoName())
+
+	// Lookup must match regardless of remote URL form.
+	for _, remote := range []string{
+		"https://github.com/owner/repo",
+		"git@github.com:owner/repo.git",
+		"ssh://git@github.com/owner/repo",
+	} {
+		rc, ok := c.Lookup(remote)
+		if !ok {
+			t.Fatalf("Lookup(%q) not found", remote)
+		}
+		if rc.LogDir != "logs" {
+			t.Errorf("LogDir = %q, want logs", rc.LogDir)
+		}
+		if rc.Processes["web"].Env["PORT"] != "3000" {
+			t.Errorf("env PORT not parsed: %+v", rc.Processes["web"])
+		}
+		if rc.Tasks["hello"] != "echo hi" {
+			t.Errorf("tasks.hello missing: %+v", rc.Tasks)
+		}
+		if len(rc.ExecWrapper) != 3 {
+			t.Errorf("exec_wrapper = %+v", rc.ExecWrapper)
+		}
 	}
-	if c.LogDir != "logs" {
-		t.Errorf("LogDir = %q, want logs", c.LogDir)
-	}
-	if c.Processes["web"].Env["PORT"] != "3000" {
-		t.Errorf("env PORT not parsed: %+v", c.Processes["web"])
-	}
-	if c.Tasks["hello"] != "echo hi" {
-		t.Errorf("tasks.hello missing: %+v", c.Tasks)
-	}
-	if len(c.Links) != 1 || c.Links[0] != ".envrc" {
-		t.Errorf("links = %+v", c.Links)
+
+	if _, ok := c.Lookup("git@github.com:other/missing.git"); ok {
+		t.Error("Lookup of unknown repo should fail")
 	}
 }
 
-func TestLoadMissingRepo(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "ws-dev.yml")
-	if err := os.WriteFile(path, []byte("log_dir: logs\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("expected error for missing repo")
+func TestLoadMissing(t *testing.T) {
+	if _, err := Load(filepath.Join(t.TempDir(), "nope.yml")); err == nil {
+		t.Fatal("expected error for missing file")
 	}
 }

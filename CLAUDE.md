@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository overview
 
-This repository is the development repository for the **ws-dev CLI**. It is a single Go binary that provides a workflow for cloning the same repository multiple times and developing in parallel.
+This repository is the development repository for the **ws-dev CLI**. It is a single Go binary that runs apps and tasks inside git worktrees (e.g. those created by `claude -w` under `.claude/worktrees/<name>/`). Per-repository settings live in `~/.config/ws-dev/config.yml`, keyed by the repo's git remote, so nothing ws-dev-specific is committed into the repo.
 
 - `cmd/ws-dev/` — entry point (cobra root)
 - `internal/` — feature modules (listed below)
@@ -67,60 +67,65 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 
 | Package | Responsibility |
 |---------|----------------|
-| `internal/cmd` | Cobra subcommand definitions (init/clone/link/unlink/server/logs/run/mcp) |
-| `internal/config` | Parses `ws-dev.yml`; `RepoName()` extracts the basename from the URL |
-| `internal/workspace` | Locates `ws-dev.yml` (walking cwd up to parents); `RepoDir(label)` etc. |
-| `internal/links` | Creates relative symlinks from `links/` into `repos/<repo>-<label>/`. Existing directories are replaced. |
-| `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio |
-| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Label}}` etc. via `text/template`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. |
+| `internal/cmd` | Cobra subcommand definitions (init/server/logs/run/tasks/mcp/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). |
+| `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form. `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
+| `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
+| `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio. Operates on a `config.RepoConfig`. |
+| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `text/template`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. |
 | `internal/mcp` | stdio JSON-RPC MCP server implementation (`list_logs` / `tail_log` / `truncate_log` / `search_log`) |
 
 ## Key design points
 
-### The server assumes a single label
+### One server per repository
 
-`ws-dev server <label>` reads `.ws-dev/server.pid`, and if the previous ws-dev process is still alive it stops it with `SIGTERM` before starting the new process. Running labels in parallel is not supported (to avoid port conflicts).
+`ws-dev server` keeps state under `<git-common-dir>/ws-dev/` (i.e. inside the shared `.git`, identical across all worktrees and never committed). If the previous ws-dev process is still alive it stops it with `SIGTERM` (then `SIGKILL` on timeout) before starting the new one. Running multiple worktrees in parallel is not supported (to avoid port conflicts).
 
-- `.ws-dev/server.pid` — our own PID
-- `.ws-dev/current-label` — most recent label (used by `ws-dev logs` when omitted)
+- `<git-common-dir>/ws-dev/server.pid` — our own PID
+- `<git-common-dir>/ws-dev/current-worktree` — most recent worktree (used by `ws-dev logs` when omitted)
+
+### Worktree resolution
+
+A worktree name is resolved against `git worktree list` by directory basename (`git.ResolveWorktree`); an ambiguous basename is an error. When the name is omitted, it is inferred from cwd via `git.CurrentWorktree` (longest path match). `ws-dev logs` prefers the recorded `current-worktree` over cwd, since only one server runs per repo.
+
+### Config lookup by remote
+
+`config.Lookup(remote)` normalizes both the configured `repos:` keys and the actual `git remote get-url origin` via `NormalizeRemote`, so `git@github.com:owner/repo.git` and `https://github.com/owner/repo` match the same entry (canonical form: `github.com/owner/repo`, lowercased). `mcp` does NOT do this lookup — it is config-free and resolves the log dir relative to cwd.
 
 ### Log directory resolution order
 
-Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in `ws-dev.yml` -> default `log`.
-
-This order is consistent across `server` / `logs` / `mcp`. `mcp` resolves relative to `cwd` (which is expected to be inside each clone).
-
-### Directory naming
-
-`repos/<repo-name>-<label>/`. `<repo-name>` is inferred from the basename of the `repo:` URL (with `.git` stripped). The `<label>` that the user passes is a short name (e.g. `fix-login`); the CLI adds the prefix internally.
+Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in config -> default `log`. The base is the worktree directory. This order is consistent across `server` / `logs` / `mcp`; `mcp` resolves relative to `cwd` (expected to be inside the worktree).
 
 ### Process template expansion
 
 `processes.<name>.cmd` is evaluated as a Go `text/template`:
 
-- `{{.Label}}` — the label
+- `{{.Worktree}}` — worktree name
 - `{{.PortBase}}` — `--port-base` / `$WS_DEV_PORT_BASE` / default 3000
-- `{{.Workspace}}` — absolute workspace path
+- `{{.Root}}` — absolute main worktree root
+- `{{.Dir}}` — absolute worktree directory (process cwd)
 
 After expansion, the string is split into argv via shell-like whitespace splitting (`tasks.fields`). Quoting support is minimal (`"..."` / `'...'` only; no escapes).
 
 ## Manual verification
 
 ```bash
-# Exercise everything in a sample workspace
-mkdir -p /tmp/ws-play && cd /tmp/ws-play
-/path/to/ws-dev init sample && cd sample
-# Edit ws-dev.yml (point repo at a real repo, fill in processes)
-../ws-dev clone branch-a
-../ws-dev link branch-a
-../ws-dev server branch-a       # in another terminal
-../ws-dev logs                  # most recent label
-../ws-dev logs branch-a web -f  # follow
-../ws-dev run branch-a console  # tasks.console
+# Use $WS_DEV_CONFIG to point at a throwaway config so ~/.config is untouched.
+export WS_DEV_CONFIG=/tmp/ws-config/config.yml
+
+cd /path/to/a/real/repo
+/path/to/ws-dev init             # creates the config + prints this repo's key
+# Add a `repos:` entry under that key with processes/tasks.
+
+claude -w branch-a               # or: git worktree add .claude/worktrees/branch-a -b branch-a
+/path/to/ws-dev server branch-a  # start processes in the worktree
+/path/to/ws-dev logs             # logs of the running/most-recent server
+/path/to/ws-dev logs branch-a web -f
+/path/to/ws-dev run branch-a console
+/path/to/ws-dev server stop
 ```
 
-MCP standalone test:
+MCP standalone test (works inside any worktree, even unconfigured):
 ```bash
-cd repos/<repo>-branch-a
+cd .claude/worktrees/branch-a
 printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' | ws-dev mcp
 ```
