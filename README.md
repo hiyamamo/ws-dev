@@ -15,6 +15,9 @@ This pairs naturally with `claude -w`, which creates worktrees under
 go install github.com/hiyamamo/ws-dev/cmd/ws-dev@latest
 ```
 
+This installs to `$(go env GOPATH)/bin` (or `$GOBIN`). Make sure that directory
+comes **before** any older copy on your `PATH` — see "Verify the install" below.
+
 Or download a prebuilt binary from GitHub Releases with `gh`:
 
 ```bash
@@ -31,6 +34,36 @@ Or build from source:
 ```bash
 go build -o ws-dev ./cmd/ws-dev
 ```
+
+### Verify the install
+
+```bash
+which -a ws-dev      # which binary actually runs (and any shadowing copies)
+ws-dev version       # should print the version you just installed
+```
+
+If `ws-dev version` shows an unexpectedly old version, you are almost certainly
+running a stale binary that shadows the freshly installed one. A common case on
+macOS: a previously downloaded release binary lives in `/usr/local/bin/ws-dev`,
+which precedes `$(go env GOPATH)/bin` on `PATH`. Remove the old copy
+(`rm $(command -v ws-dev)`) and re-run, or reorder your `PATH`.
+
+Note on version reporting: prebuilt release binaries carry the exact `vX.Y.Z`
+tag (stamped via ldflags). A `go install ...@vX.Y.Z` build reports that module
+version via Go's embedded build info; a local `go build` reports `dev` with the
+VCS commit/time.
+
+### Updating
+
+```bash
+ws-dev update          # download the latest release and replace this binary in place
+ws-dev update --force  # reinstall even if already up to date
+```
+
+`update` downloads the release asset for your OS/arch, verifies it against the
+release `checksums.txt`, and atomically swaps the running binary. If it lives in
+a protected directory (e.g. `/usr/local/bin`), re-run with `sudo`. (For
+`go install` setups, `go install ...@latest` remains an alternative.)
 
 ## Development setup
 
@@ -73,6 +106,7 @@ recent `ws-dev server` run.
 | `ws-dev run [<worktree>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
 | `ws-dev tasks` | List tasks defined for the current repo. |
 | `ws-dev mcp` | Run the stdio MCP server (log operations for `$PWD/$log_dir`). |
+| `ws-dev update` | Replace the running binary with the latest GitHub release (verifies the checksum). `--force` to reinstall. |
 
 Flags:
 - `--log-dir <path>` — override log directory (falls back to `$WS_DEV_LOG_DIR`, then `log_dir` in config, then `log`).

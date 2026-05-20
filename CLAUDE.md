@@ -67,7 +67,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 
 | Package | Responsibility |
 |---------|----------------|
-| `internal/cmd` | Cobra subcommand definitions (init/server/logs/run/tasks/mcp/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). |
+| `internal/cmd` | Cobra subcommand definitions (init/server/logs/run/tasks/mcp/update/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). `update.go` self-updates from the latest GitHub release (checksum-verified, atomic replace). |
 | `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form. `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
 | `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
 | `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio. Operates on a `config.RepoConfig`. |
