@@ -2,28 +2,48 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+// Process is a single long-running process managed by `ws-dev server`.
 type Process struct {
 	Cmd string            `yaml:"cmd"`
 	Env map[string]string `yaml:"env,omitempty"`
 }
 
-type Config struct {
-	Repo        string             `yaml:"repo"`
+// RepoConfig holds the per-repository settings looked up by remote URL.
+type RepoConfig struct {
 	LogDir      string             `yaml:"log_dir,omitempty"`
 	ExecWrapper []string           `yaml:"exec_wrapper,omitempty"`
 	Processes   map[string]Process `yaml:"processes,omitempty"`
 	Tasks       map[string]string  `yaml:"tasks,omitempty"`
-	Links       []string           `yaml:"links,omitempty"`
 }
 
+// Config is the top-level ~/.config/ws-dev/config.yml document. Each entry in
+// Repos is keyed by a git remote URL (any form; matched after normalization).
+type Config struct {
+	Repos map[string]RepoConfig `yaml:"repos"`
+}
+
+// DefaultPath returns the config file path, honoring $WS_DEV_CONFIG and
+// $XDG_CONFIG_HOME, falling back to ~/.config/ws-dev/config.yml.
+func DefaultPath() string {
+	if v := os.Getenv("WS_DEV_CONFIG"); v != "" {
+		return v
+	}
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "ws-dev", "config.yml")
+}
+
+// Load reads and parses the config file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -33,27 +53,51 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if c.Repo == "" {
-		return nil, fmt.Errorf("%s: repo is required", path)
-	}
 	return c, nil
 }
 
-// RepoName infers a directory name from the repo URL.
-// e.g. https://github.com/C-FO/freee-invoice -> "freee-invoice"
-//
-//	git@github.com:C-FO/freee-invoice.git -> "freee-invoice"
-func (c *Config) RepoName() string {
-	return inferRepoName(c.Repo)
+// Lookup returns the RepoConfig whose key normalizes to the same value as
+// remote. Both the stored keys and remote are normalized before comparison.
+func (c *Config) Lookup(remote string) (*RepoConfig, bool) {
+	target := NormalizeRemote(remote)
+	for key, rc := range c.Repos {
+		if NormalizeRemote(key) == target {
+			rc := rc
+			return &rc, true
+		}
+	}
+	return nil, false
 }
 
-func inferRepoName(repo string) string {
-	s := strings.TrimSuffix(repo, ".git")
-	if u, err := url.Parse(s); err == nil && u.Path != "" {
-		s = u.Path
+// NormalizeRemote canonicalizes a git remote URL so that ssh (scp) and https
+// forms of the same repository compare equal. e.g. both
+//
+//	git@github.com:owner/repo.git
+//	https://github.com/owner/repo
+//
+// normalize to "github.com/owner/repo".
+func NormalizeRemote(remote string) string {
+	s := strings.TrimSpace(remote)
+	s = strings.TrimSuffix(s, "/")
+	s = strings.TrimSuffix(s, ".git")
+
+	// Drop scheme (https://, ssh://, git://, ...).
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
 	}
-	if i := strings.LastIndex(s, ":"); i >= 0 {
-		s = s[i+1:]
+	// Drop userinfo (user@host) when it precedes the path.
+	if at := strings.Index(s, "@"); at >= 0 {
+		if slash := strings.Index(s, "/"); slash < 0 || at < slash {
+			s = s[at+1:]
+		}
 	}
-	return path.Base(s)
+	// scp-like "host:path" -> "host/path" (first colon before any slash).
+	if colon := strings.Index(s, ":"); colon >= 0 {
+		if slash := strings.Index(s, "/"); slash < 0 || colon < slash {
+			s = s[:colon] + "/" + s[colon+1:]
+		}
+	}
+	s = strings.TrimSuffix(s, "/")
+	s = strings.TrimSuffix(s, ".git")
+	return strings.ToLower(s)
 }

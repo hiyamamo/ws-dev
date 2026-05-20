@@ -2,58 +2,64 @@ package cmd
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/hiyamamo/ws-dev/internal/config"
+	"github.com/hiyamamo/ws-dev/internal/git"
 )
 
-//go:embed templates/ws-dev.yml.tmpl
+//go:embed templates/config.yml.tmpl
 var initConfigTemplate []byte
-
-const gitignoreContents = `# ws-dev workspace
-/.ws-dev/
-/repos/
-# Symlinked environment files (replace or extend as needed).
-/links/.envrc
-`
 
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "init <name>",
-		Short: "Create a new workspace directory",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if err := scaffold(name); err != nil {
+		Use:   "init",
+		Short: "Create ~/.config/ws-dev/config.yml and print the key for the current repo",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			path := config.DefaultPath()
+
+			created, err := ensureConfig(path)
+			if err != nil {
 				return err
 			}
-			fmt.Printf("Initialized workspace at %s\n", name)
-			fmt.Printf("Next steps:\n")
-			fmt.Printf("  1. Edit %s/ws-dev.yml (set repo URL, processes, tasks)\n", name)
-			fmt.Printf("  2. Place shared env files under %s/links/\n", name)
-			fmt.Printf("  3. cd %s && ws-dev clone <label>\n", name)
+			if created {
+				_, _ = fmt.Fprintf(out, "Created %s\n", path)
+			} else {
+				_, _ = fmt.Fprintf(out, "Config already exists at %s\n", path)
+			}
+
+			// When run inside a git repo, show the key to register.
+			if remote, err := git.Remote(); err == nil {
+				key := config.NormalizeRemote(remote)
+				_, _ = fmt.Fprintf(out, "\nThis repo's remote: %s\n", remote)
+				_, _ = fmt.Fprintf(out, "Add an entry under `repos:` keyed by:\n\n  %s:\n    processes:\n      web:\n        cmd: \"...\"\n", key)
+			}
 			return nil
 		},
 	}
 }
 
-func scaffold(name string) error {
-	if _, err := os.Stat(name); err == nil {
-		return fmt.Errorf("%s already exists", name)
+// ensureConfig writes the template to path if it does not already exist,
+// creating parent directories. It returns whether a new file was created.
+func ensureConfig(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return false, err
 	}
-	if err := os.MkdirAll(filepath.Join(name, "repos"), 0o755); err != nil {
-		return err
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, err
 	}
-	if err := os.MkdirAll(filepath.Join(name, "links"), 0o755); err != nil {
-		return err
+	if err := os.WriteFile(path, initConfigTemplate, 0o644); err != nil {
+		return false, err
 	}
-	if err := os.WriteFile(filepath.Join(name, "ws-dev.yml"), initConfigTemplate, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(name, ".gitignore"), []byte(gitignoreContents), 0o644); err != nil {
-		return err
-	}
-	return nil
+	return true, nil
 }

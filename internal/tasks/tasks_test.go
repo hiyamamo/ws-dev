@@ -23,7 +23,7 @@ func TestFields(t *testing.T) {
 }
 
 func TestBuildArgvWithWrapper(t *testing.T) {
-	cfg := &config.Config{
+	cfg := &config.RepoConfig{
 		ExecWrapper: []string{"direnv", "exec", "."},
 		Tasks:       map[string]string{"console": "bundle exec rails console"},
 	}
@@ -35,7 +35,7 @@ func TestBuildArgvWithWrapper(t *testing.T) {
 }
 
 func TestBuildArgvNoWrapper(t *testing.T) {
-	cfg := &config.Config{
+	cfg := &config.RepoConfig{
 		Tasks: map[string]string{"hello": "echo hi"},
 	}
 	got := BuildArgv(cfg, cfg.Tasks["hello"], nil)

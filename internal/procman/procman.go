@@ -23,20 +23,21 @@ import (
 
 // Vars are template variables exposed to process cmd strings.
 type Vars struct {
-	Label     string
-	PortBase  int
-	Workspace string
+	Worktree string // worktree name (basename)
+	Root     string // main worktree root (absolute)
+	Dir      string // worktree directory where the process runs (absolute)
+	PortBase int
 }
 
 type Opts struct {
-	Cfg       *config.Config
-	Label     string
-	RepoDir   string
-	LogDir    string // absolute path
-	PortBase  int
-	Workspace string // absolute path to workspace root
-	Stdout    io.Writer
-	Stderr    io.Writer
+	Cfg      *config.RepoConfig
+	Worktree string // worktree name
+	Dir      string // absolute worktree directory (process cwd)
+	Root     string // absolute main worktree root
+	LogDir   string // absolute path
+	PortBase int
+	Stdout   io.Writer
+	Stderr   io.Writer
 }
 
 // Run starts all configured processes and blocks until a shutdown signal
@@ -82,7 +83,7 @@ func Run(o Opts) error {
 
 	for _, name := range names {
 		p := o.Cfg.Processes[name]
-		argv, err := buildArgv(o.Cfg, p.Cmd, Vars{Label: o.Label, PortBase: o.PortBase, Workspace: o.Workspace})
+		argv, err := buildArgv(o.Cfg, p.Cmd, Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase})
 		if err != nil {
 			cancel()
 			return err
@@ -98,10 +99,11 @@ func Run(o Opts) error {
 		}
 
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		cmd.Dir = o.RepoDir
+		cmd.Dir = o.Dir
 		cmd.Env = append(os.Environ(),
-			"WS_DEV_LABEL="+o.Label,
-			"WS_DEV_WORKSPACE="+o.Workspace,
+			"WS_DEV_WORKTREE="+o.Worktree,
+			"WS_DEV_ROOT="+o.Root,
+			"WS_DEV_DIR="+o.Dir,
 			fmt.Sprintf("WS_DEV_PORT_BASE=%d", o.PortBase),
 			"WS_DEV_LOG_DIR="+o.LogDir,
 		)
@@ -199,7 +201,7 @@ func Run(o Opts) error {
 	return nil
 }
 
-func buildArgv(cfg *config.Config, cmd string, v Vars) ([]string, error) {
+func buildArgv(cfg *config.RepoConfig, cmd string, v Vars) ([]string, error) {
 	tmpl, err := template.New("cmd").Parse(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("parse cmd template: %w", err)

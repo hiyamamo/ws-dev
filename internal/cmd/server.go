@@ -14,12 +14,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hiyamamo/ws-dev/internal/procman"
-	"github.com/hiyamamo/ws-dev/internal/workspace"
 )
 
 const (
-	pidFileName   = "server.pid"
-	labelFileName = "current-label"
+	pidFileName      = "server.pid"
+	worktreeFileName = "current-worktree"
 )
 
 func newServerCmd() *cobra.Command {
@@ -28,15 +27,15 @@ func newServerCmd() *cobra.Command {
 		logDir   string
 	)
 	c := &cobra.Command{
-		Use:   "server [<label>]",
-		Short: "Start configured processes for a label (stops any prior server first; label is inferred from cwd when omitted)",
+		Use:   "server [<worktree>]",
+		Short: "Start configured processes in a worktree (stops any prior server first; worktree is inferred from cwd when omitted)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runServer(firstArg(args), portBase, logDir)
 		},
 	}
 	c.Flags().IntVar(&portBase, "port-base", 0, "Base port exposed as {{.PortBase}} / WS_DEV_PORT_BASE (default: 3000 or $WS_DEV_PORT_BASE)")
-	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to repo (overrides config and $WS_DEV_LOG_DIR)")
+	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
 	c.AddCommand(newServerStopCmd())
 	return c
 }
@@ -47,15 +46,11 @@ func newServerStopCmd() *cobra.Command {
 		Short: "Stop the currently running ws-dev server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			ws, err := workspace.FindFromCwd()
+			sdir, err := stateDir()
 			if err != nil {
 				return err
 			}
-			stateDir, err := ws.StateDir()
-			if err != nil {
-				return err
-			}
-			stopped, err := stopPrior(filepath.Join(stateDir, pidFileName))
+			stopped, err := stopPrior(filepath.Join(sdir, pidFileName))
 			if err != nil {
 				return err
 			}
@@ -69,26 +64,22 @@ func newServerStopCmd() *cobra.Command {
 	}
 }
 
-func runServer(label string, portBase int, logDirFlag string) error {
-	ws, err := workspace.FindFromCwd()
+func runServer(worktreeArg string, portBase int, logDirFlag string) error {
+	rc, err := loadRepoCtx()
 	if err != nil {
 		return err
 	}
-	label, err = resolveLabel(ws, label)
+	worktree, dir, err := rc.resolveWorktree(worktreeArg)
 	if err != nil {
 		return err
-	}
-	repoDir := ws.RepoDir(label)
-	if _, err := os.Stat(repoDir); err != nil {
-		return fmt.Errorf("repo dir %s not found (run `ws-dev clone %s` first)", repoDir, label)
 	}
 
-	stateDir, err := ws.StateDir()
+	sdir, err := stateDir()
 	if err != nil {
 		return err
 	}
-	pidPath := filepath.Join(stateDir, pidFileName)
-	labelPath := filepath.Join(stateDir, labelFileName)
+	pidPath := filepath.Join(sdir, pidFileName)
+	worktreePath := filepath.Join(sdir, worktreeFileName)
 
 	if _, err := stopPrior(pidPath); err != nil {
 		return err
@@ -97,7 +88,7 @@ func runServer(label string, portBase int, logDirFlag string) error {
 	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(labelPath, []byte(label), 0o644); err != nil {
+	if err := os.WriteFile(worktreePath, []byte(worktree), 0o644); err != nil {
 		return err
 	}
 	defer func() { _ = os.Remove(pidPath) }()
@@ -113,16 +104,15 @@ func runServer(label string, portBase int, logDirFlag string) error {
 		portBase = 3000
 	}
 
-	logSub := ws.ResolveLogDir(logDirFlag)
-	logAbs := filepath.Join(repoDir, logSub)
+	logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
 
 	return procman.Run(procman.Opts{
-		Cfg:       ws.Config,
-		Label:     label,
-		RepoDir:   repoDir,
-		LogDir:    logAbs,
-		PortBase:  portBase,
-		Workspace: ws.Root,
+		Cfg:      rc.Config,
+		Worktree: worktree,
+		Dir:      dir,
+		Root:     rc.Root,
+		LogDir:   logAbs,
+		PortBase: portBase,
 	})
 }
 

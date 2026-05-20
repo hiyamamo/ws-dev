@@ -32,8 +32,8 @@ func newMcpCmd() *cobra.Command {
 }
 
 // resolveMcpLogDir picks the log dir: flag > env > "log".
-// The MCP server runs inside a single repo dir (cwd), so we don't consult
-// ws-dev.yml from here — the env var lets the launcher inject the right value.
+// The MCP server runs inside a single worktree (cwd) and is intentionally
+// config-free — the env var lets the launcher inject the right value.
 func resolveMcpLogDir(flagValue string) string {
 	if flagValue != "" {
 		return flagValue

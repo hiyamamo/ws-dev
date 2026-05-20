@@ -1,6 +1,13 @@
 # ws-dev
 
-Parallel workspace manager for multi-clone development. Clone the same repository multiple times under one directory, share environment files via symlinks, and manage processes/tasks from a single `ws-dev.yml`.
+Run apps and tasks inside git worktrees. `ws-dev` starts a Procfile-like set of
+processes, runs user-defined tasks, and exposes a built-in MCP server for log
+operations — all scoped to a git worktree. Per-repository settings live in a
+single `~/.config/ws-dev/config.yml`, keyed by the repo's git remote, so nothing
+ws-dev-specific has to be committed into the repo itself.
+
+This pairs naturally with `claude -w`, which creates worktrees under
+`.claude/worktrees/<name>/`.
 
 ## Install
 
@@ -39,72 +46,82 @@ mise exec -- lefthook install
 ## Quick start
 
 ```bash
-ws-dev init myproj
-cd myproj
-# Edit ws-dev.yml: set `repo`, fill in `processes`, `tasks`, `links`.
-# Place shared env files under links/ (e.g. links/.envrc).
+cd /path/to/your-repo
+ws-dev init                       # create ~/.config/ws-dev/config.yml + print this repo's key
+# Edit the config: add an entry under `repos:` with `processes` / `tasks`.
 
-ws-dev clone branch-a
-ws-dev link branch-a
-ws-dev server branch-a            # starts all processes, streams logs
-ws-dev logs                       # list logs for the most recent label
-ws-dev logs branch-a web -f       # follow a specific log
-ws-dev run branch-a console       # run a task defined in ws-dev.yml
-ws-dev mcp                        # stdio MCP server (run inside repos/<repo>-<label>)
+claude -w feature-x               # create a worktree at .claude/worktrees/feature-x
+ws-dev server feature-x           # start all processes in that worktree, stream logs
+ws-dev logs                       # list logs of the running/most-recent server
+ws-dev logs feature-x web -f      # follow a specific log
+ws-dev run feature-x console      # run a task defined in config
+ws-dev mcp                        # stdio MCP server (run inside the worktree)
 ```
+
+The worktree name may be omitted when the command is run from inside the worktree
+(it is inferred from the path). `ws-dev logs` additionally falls back to the most
+recent `ws-dev server` run.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `ws-dev init <name>` | Scaffold `<name>/` with `ws-dev.yml`, `repos/`, `links/`, `.gitignore`. |
-| `ws-dev clone <label>` | Clone the configured repo into `repos/<repo-name>-<label>/`. |
-| `ws-dev link [<label>]` | Symlink each path in `links/` to the matching path in the repo. |
-| `ws-dev unlink [<label>]` | Remove those symlinks (non-symlink files are left alone). |
-| `ws-dev server [<label>]` | Start `processes` in parallel. Any prior `ws-dev server` is stopped first. |
+| `ws-dev init` | Create `~/.config/ws-dev/config.yml` (if missing) and print the config key for the current repo. |
+| `ws-dev server [<worktree>]` | Start `processes` in parallel inside the worktree. Any prior `ws-dev server` for the repo is stopped first. |
 | `ws-dev server stop` | Stop the current server. |
-| `ws-dev logs [<label>] [<name>]` | List `*.log` or tail a specific log. |
-| `ws-dev run [<label>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
+| `ws-dev logs [<worktree>] [<name>]` | List `*.log` or tail a specific log. |
+| `ws-dev run [<worktree>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
+| `ws-dev tasks` | List tasks defined for the current repo. |
 | `ws-dev mcp` | Run the stdio MCP server (log operations for `$PWD/$log_dir`). |
-
-`<label>` may be omitted when the command is run from inside `repos/<repo-name>-<label>/` (or any subdirectory) — it is inferred from the path. `ws-dev logs` also falls back to the most recent `ws-dev server` run when neither is available.
 
 Flags:
 - `--log-dir <path>` — override log directory (falls back to `$WS_DEV_LOG_DIR`, then `log_dir` in config, then `log`).
 - `--port-base <n>` — base port exposed to processes as `{{.PortBase}}` / `$WS_DEV_PORT_BASE`.
 - `-n <lines>` / `-f` for `ws-dev logs`.
 
-## `ws-dev.yml`
+### One server per repository
+
+`ws-dev server` records its PID under the repo's shared git directory
+(`<git-common-dir>/ws-dev/`, i.e. inside `.git`, never committed and shared by
+all worktrees). Starting a new server stops any prior `ws-dev server` for the
+same repo first (SIGTERM, then SIGKILL on timeout). Running multiple worktrees
+in parallel is not supported, to avoid port conflicts.
+
+## `~/.config/ws-dev/config.yml`
 
 ```yaml
-repo: https://github.com/owner/repo
-log_dir: log
+repos:
+  # Keyed by git remote. ssh and https forms of the same repo match
+  # interchangeably (git@github.com:owner/repo.git == https://github.com/owner/repo).
+  github.com/owner/repo:
+    log_dir: log
 
-# Optional wrapper applied to every process/task.
-# exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
+    # Optional wrapper applied to every process/task.
+    # exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
 
-processes:
-  web:
-    cmd: "bundle exec rails s -b 0.0.0.0 -p {{.PortBase}}"
-  worker:
-    cmd: "bin/rails resque:work"
-    env:
-      QUEUE: "*"
+    processes:
+      web:
+        cmd: "bundle exec rails s -b 0.0.0.0 -p {{.PortBase}}"
+      worker:
+        cmd: "bin/rails resque:work"
+        env:
+          QUEUE: "*"
 
-tasks:
-  console: "bundle exec rails console"
-  bundle-install: "bundle install"
-
-links:
-  - .envrc
-  - .claude/settings.local.json
-  - storage   # directories are linked recursively (existing dir is replaced)
+    tasks:
+      console: "bundle exec rails console"
+      bundle-install: "bundle install"
 ```
 
-Template variables available inside `processes.<name>.cmd`: `{{.Label}}`, `{{.PortBase}}`, `{{.Workspace}}`.
+Config file path resolves in this order: `$WS_DEV_CONFIG` > `$XDG_CONFIG_HOME/ws-dev/config.yml` > `~/.config/ws-dev/config.yml`.
+
+Template variables available inside `processes.<name>.cmd`:
+- `{{.Worktree}}` — worktree name
+- `{{.PortBase}}` — base port
+- `{{.Root}}` — main worktree root (absolute)
+- `{{.Dir}}` — the worktree directory where the process runs (absolute)
 
 Each process receives the following environment variables:
-- `WS_DEV_LABEL`, `WS_DEV_WORKSPACE`, `WS_DEV_PORT_BASE`, `WS_DEV_LOG_DIR`
+- `WS_DEV_WORKTREE`, `WS_DEV_ROOT`, `WS_DEV_DIR`, `WS_DEV_PORT_BASE`, `WS_DEV_LOG_DIR`
 - Plus anything listed under `processes.<name>.env`.
 
 ## MCP
@@ -116,15 +133,19 @@ Each process receives the following environment variables:
 - `truncate_log` — truncate `<name>.log` to 0 bytes.
 - `search_log` — regex search (RE2) with optional context lines.
 
-Register it in each clone's `.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary with `cwd` set to the repo.
+It is intentionally config-free: it resolves the log directory relative to its
+working directory (the worktree), so it works in any worktree even before the
+repo is registered in `config.yml`. Register it in each worktree's
+`.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary
+with `cwd` set to the worktree.
 
 ### Claude Code skill
 
 This repo ships an agent-skill at `skills/ws-dev-logs/` that teaches Claude when to reach for each MCP tool and how to chain them (crash investigation, error search, reset-and-retry). Install it with [`gh skill`](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/) (GitHub CLI v2.90.0+):
 
 ```bash
-# Per-clone (recommended):
-cd repos/<repo>-<label>
+# Per-worktree (recommended):
+cd .claude/worktrees/<name>
 gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope project
 
 # Or once, globally for all Claude Code sessions:
@@ -132,4 +153,3 @@ gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope user
 ```
 
 Provenance (repo, ref, tree SHA) is written into the installed `SKILL.md`'s frontmatter, so `gh skill update` can pick up changes later.
-

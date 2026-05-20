@@ -13,7 +13,7 @@ import (
 // BuildArgv splits the task command into argv form, prepends exec_wrapper,
 // and appends extra args. The task command is split by shell-style whitespace
 // splitting (simple, not full shell parsing).
-func BuildArgv(cfg *config.Config, taskCmd string, extra []string) []string {
+func BuildArgv(cfg *config.RepoConfig, taskCmd string, extra []string) []string {
 	parts := fields(taskCmd)
 	argv := make([]string, 0, len(cfg.ExecWrapper)+len(parts)+len(extra))
 	argv = append(argv, cfg.ExecWrapper...)
@@ -24,7 +24,7 @@ func BuildArgv(cfg *config.Config, taskCmd string, extra []string) []string {
 
 // Run executes a configured task inside dir with stdio inherited.
 // extraArgs are appended to the configured task command.
-func Run(cfg *config.Config, dir, task string, extraArgs []string) error {
+func Run(cfg *config.RepoConfig, dir, task string, extraArgs []string) error {
 	cmdStr, ok := cfg.Tasks[task]
 	if !ok {
 		return fmt.Errorf("task %q not defined", task)
