@@ -112,7 +112,7 @@ func Run(o Opts) error {
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-		prefix := padRight(name, maxNameLen) + " | "
+		prefix := o.Worktree + ":" + padRight(name, maxNameLen) + " | "
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
 			_ = logFile.Close()
