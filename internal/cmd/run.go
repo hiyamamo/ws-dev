@@ -1,19 +1,15 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 
-	"github.com/hiyamamo/ws-dev/internal/git"
 	"github.com/hiyamamo/ws-dev/internal/tasks"
 )
 
 func newRunCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:                "run [<worktree>] <task> [args...]",
-		Short:              "Run a configured task inside a worktree (worktree is inferred from cwd when omitted)",
+		Short:              "Run a configured task in a worktree (defaults to the repository root when the worktree is omitted)",
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -21,10 +17,7 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			worktreeArg, task, extra, err := splitRunArgs(rc, args)
-			if err != nil {
-				return err
-			}
+			worktreeArg, task, extra := splitRunArgs(rc, args)
 			_, dir, err := rc.resolveWorktree(worktreeArg)
 			if err != nil {
 				return err
@@ -35,27 +28,18 @@ func newRunCmd() *cobra.Command {
 	return c
 }
 
-// splitRunArgs decides whether the first arg is a worktree name or a task. When
-// cwd is inside a worktree, the first arg is treated as the task (worktree
-// inferred from cwd). If the first arg isn't a defined task and args[1] is, fall
-// back to the explicit `<worktree> <task>` form.
-func splitRunArgs(rc *repoCtx, args []string) (worktree, task string, extra []string, err error) {
-	cwdInWorktree := false
-	if cwd, e := os.Getwd(); e == nil {
-		_, cwdInWorktree = git.CurrentWorktree(rc.Worktrees, cwd)
+// splitRunArgs decides whether the first arg is a worktree name or a task.
+// `ws-dev run <task>` runs at the repository root; `ws-dev run <worktree>
+// <task>` targets a named worktree. The first arg is treated as a worktree
+// only when it is not itself a defined task and the following arg is.
+func splitRunArgs(rc *repoCtx, args []string) (worktree, task string, extra []string) {
+	if _, ok := rc.Config.Tasks[args[0]]; ok {
+		return "", args[0], args[1:]
 	}
-	if cwdInWorktree {
-		_, firstIsTask := rc.Config.Tasks[args[0]]
-		if firstIsTask || len(args) < 2 {
-			return "", args[0], args[1:], nil
+	if len(args) >= 2 {
+		if _, ok := rc.Config.Tasks[args[1]]; ok {
+			return args[0], args[1], args[2:]
 		}
-		if _, secondIsTask := rc.Config.Tasks[args[1]]; secondIsTask {
-			return args[0], args[1], args[2:], nil
-		}
-		return "", args[0], args[1:], nil
 	}
-	if len(args) < 2 {
-		return "", "", nil, fmt.Errorf("usage: ws-dev run <worktree> <task> [args...] (worktree may be omitted when run inside a worktree)")
-	}
-	return args[0], args[1], args[2:], nil
+	return "", args[0], args[1:]
 }

@@ -28,7 +28,7 @@ func newServerCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "server [<worktree>]",
-		Short: "Start configured processes in a worktree (stops any prior server first; worktree is inferred from cwd when omitted)",
+		Short: "Start configured processes in a worktree (stops any prior server first; defaults to the repository root when the worktree is omitted)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runServer(firstArg(args), portBase, logDir)

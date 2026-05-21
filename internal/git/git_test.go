@@ -62,30 +62,3 @@ func TestResolveWorktree(t *testing.T) {
 		t.Error("expected error for ambiguous basename")
 	}
 }
-
-func TestCurrentWorktree(t *testing.T) {
-	wts := ParseWorktrees([]byte(samplePorcelain))
-
-	// cwd inside feature-a should match feature-a, not the main root
-	// (longest prefix wins).
-	wt, ok := CurrentWorktree(wts, "/home/u/proj/.claude/worktrees/feature-a/sub/dir")
-	if !ok || wt.Branch != "feature-a" {
-		t.Errorf("CurrentWorktree = %+v, ok=%v", wt, ok)
-	}
-
-	// cwd in the main worktree (but not in any nested worktree).
-	wt, ok = CurrentWorktree(wts, "/home/u/proj/app/models")
-	if !ok || wt.Path != "/home/u/proj" {
-		t.Errorf("CurrentWorktree main = %+v, ok=%v", wt, ok)
-	}
-
-	// Outside any worktree.
-	if _, ok := CurrentWorktree(wts, "/tmp/other"); ok {
-		t.Error("expected no match outside worktrees")
-	}
-
-	// Prefix must respect path boundaries: /home/u/proj-other is not inside /home/u/proj.
-	if wt, ok := CurrentWorktree(wts, "/home/u/proj-other/x"); ok {
-		t.Errorf("false prefix match: %+v", wt)
-	}
-}
