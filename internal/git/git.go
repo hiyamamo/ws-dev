@@ -127,21 +127,3 @@ func ResolveWorktree(wts []Worktree, name string) (string, error) {
 		return "", fmt.Errorf("worktree name %q is ambiguous: %s", name, strings.Join(matches, ", "))
 	}
 }
-
-// CurrentWorktree returns the worktree containing cwd, preferring the longest
-// (most specific) path so a nested worktree wins over the main root.
-func CurrentWorktree(wts []Worktree, cwd string) (Worktree, bool) {
-	cwd = filepath.Clean(cwd)
-	best := -1
-	var found Worktree
-	for _, wt := range wts {
-		p := filepath.Clean(wt.Path)
-		if cwd == p || strings.HasPrefix(cwd, p+string(filepath.Separator)) {
-			if len(p) > best {
-				best = len(p)
-				found = wt
-			}
-		}
-	}
-	return found, best >= 0
-}

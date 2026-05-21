@@ -85,7 +85,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 
 ### Worktree resolution
 
-A worktree name is resolved against `git worktree list` by directory basename (`git.ResolveWorktree`); an ambiguous basename is an error. When the name is omitted, it is inferred from cwd via `git.CurrentWorktree` (longest path match). `ws-dev logs` prefers the recorded `current-worktree` over cwd, since only one server runs per repo.
+A worktree name is resolved against `git worktree list` by directory basename (`git.ResolveWorktree`); an ambiguous basename is an error. When the name is omitted, commands default to the repository's main worktree (root). `ws-dev logs` still prefers the recorded `current-worktree` (the most recent server run) over the root default, since only one server runs per repo.
 
 ### Config lookup by remote
 

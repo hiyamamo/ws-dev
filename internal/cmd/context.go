@@ -44,24 +44,16 @@ func loadRepoCtx() (*repoCtx, error) {
 }
 
 // resolveWorktree maps a worktree name to its name and absolute directory.
-// When name is empty it is inferred from the current working directory.
+// When name is empty it defaults to the repository's main worktree (root).
 func (c *repoCtx) resolveWorktree(name string) (wtName, dir string, err error) {
-	if name != "" {
-		dir, err = git.ResolveWorktree(c.Worktrees, name)
-		if err != nil {
-			return "", "", err
-		}
-		return name, dir, nil
+	if name == "" {
+		return filepath.Base(c.Root), c.Root, nil
 	}
-	cwd, err := os.Getwd()
+	dir, err = git.ResolveWorktree(c.Worktrees, name)
 	if err != nil {
 		return "", "", err
 	}
-	wt, ok := git.CurrentWorktree(c.Worktrees, cwd)
-	if !ok {
-		return "", "", fmt.Errorf("worktree not specified and current directory is not inside a worktree")
-	}
-	return filepath.Base(wt.Path), wt.Path, nil
+	return name, dir, nil
 }
 
 // stateDir returns <git-common-dir>/ws-dev, creating it. The shared git dir is

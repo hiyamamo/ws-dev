@@ -20,7 +20,7 @@ func newLogsCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "logs [<worktree>] [<name>]",
-		Short: "List logs or tail a specific log (worktree defaults to cwd, then most recent server run)",
+		Short: "List logs or tail a specific log (worktree defaults to the most recent server run, then the repository root)",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			rc, err := loadRepoCtx()
@@ -34,7 +34,7 @@ func newLogsCmd() *cobra.Command {
 			if len(args) == 2 {
 				name = args[1]
 			}
-			// Precedence: explicit arg > most recent server run > cwd.
+			// Precedence: explicit arg > most recent server run > root.
 			// Only one server runs per repo, so the recorded run is almost
 			// always the log set the user wants.
 			if worktreeArg == "" {
