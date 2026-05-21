@@ -52,6 +52,7 @@ func Run(o Opts) error {
 	if o.Stderr == nil {
 		o.Stderr = os.Stderr
 	}
+	_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] running in worktree %q (port-base %d)\n", o.Worktree, o.PortBase)
 	if err := os.MkdirAll(o.LogDir, 0o755); err != nil {
 		return fmt.Errorf("create log dir: %w", err)
 	}
