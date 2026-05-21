@@ -77,6 +77,11 @@ func Run(o Opts) error {
 		}
 	}
 
+	filter := &outputFilter{names: names}
+	if restore := setupInteractive(filter, o.Stdout); restore != nil {
+		defer restore()
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	children := map[string]*exec.Cmd{}
@@ -139,11 +144,11 @@ func Run(o Opts) error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			copyTee(outPipe, logFile, o.Stdout, prefix)
+			copyTee(outPipe, logFile, o.Stdout, prefix, name, filter)
 		}()
 		go func() {
 			defer wg.Done()
-			copyTee(errPipe, logFile, o.Stderr, prefix)
+			copyTee(errPipe, logFile, o.Stderr, prefix, name, filter)
 		}()
 		wg.Add(1)
 		go func(name string, c *exec.Cmd, lf *os.File) {
@@ -213,14 +218,16 @@ func buildArgv(cfg *config.RepoConfig, cmd string, v Vars) ([]string, error) {
 	return tasks.BuildArgv(cfg, buf.String(), nil), nil
 }
 
-func copyTee(src io.Reader, logFile io.Writer, stdout io.Writer, prefix string) {
+func copyTee(src io.Reader, logFile io.Writer, stdout io.Writer, prefix, name string, filter *outputFilter) {
 	r := bufio.NewReader(src)
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 {
 			_, _ = logFile.Write(line)
-			_, _ = stdout.Write([]byte(prefix))
-			_, _ = stdout.Write(line)
+			if filter.shows(name) {
+				_, _ = stdout.Write([]byte(prefix))
+				_, _ = stdout.Write(line)
+			}
 		}
 		if err != nil {
 			return
