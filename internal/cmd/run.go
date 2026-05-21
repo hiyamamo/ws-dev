@@ -12,8 +12,22 @@ import (
 
 func newRunCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:                "run [<worktree>] <task> [args...]",
-		Short:              "Run a configured task inside a worktree (worktree is inferred from cwd when omitted)",
+		Use:   "run [<worktree>] <task> [args...]",
+		Short: "Run a configured task inside a worktree (worktree is inferred from cwd when omitted)",
+		Long: `Run a configured task inside a worktree.
+
+Arguments are positional and ordered: the worktree name comes first, then
+the task name, then any extra args passed through to the task. The worktree
+name is optional; when run from inside a worktree it may be omitted, in which
+case the first argument is the task name.`,
+		Example: `  # inside a worktree: first arg is the task name
+  ws-dev run console
+
+  # from anywhere: worktree name first, then task name
+  ws-dev run branch-a console
+
+  # extra args after the task name are passed through to it
+  ws-dev run branch-a migrate VERSION=20240101`,
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
