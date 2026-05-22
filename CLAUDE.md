@@ -83,6 +83,10 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 - `<git-common-dir>/ws-dev/server.pid` — our own PID
 - `<git-common-dir>/ws-dev/current-worktree` — most recent worktree (used by `ws-dev logs` when omitted)
 
+### Background mode
+
+`ws-dev server -b` / `--background` starts the server detached and returns immediately. The foreground process validates the config + worktree (so misconfiguration surfaces synchronously), then re-execs itself without `-b` in a new session (`Setsid`) with the child's combined output redirected to `<log-dir>/server.log`. The detached child runs the normal foreground flow, so it owns the pid file and process lifecycle exactly as a foreground run would; `ws-dev server stop` (or another `ws-dev server`) stops it via the recorded pid like any other run. Per-process logs still go to `<log-dir>/<name>.log`.
+
 ### Worktree resolution
 
 A worktree name is resolved against `git worktree list` by directory basename (`git.ResolveWorktree`); an ambiguous basename is an error. When the name is omitted, commands default to the repository's main worktree (root). `ws-dev logs` still prefers the recorded `current-worktree` (the most recent server run) over the root default, since only one server runs per repo.
@@ -117,7 +121,8 @@ cd /path/to/a/real/repo
 # Add a `repos:` entry under that key with processes/tasks.
 
 claude -w branch-a               # or: git worktree add .claude/worktrees/branch-a -b branch-a
-/path/to/ws-dev server branch-a  # start processes in the worktree
+/path/to/ws-dev server branch-a  # start processes in the worktree (foreground)
+/path/to/ws-dev server -b branch-a  # start detached; returns immediately
 /path/to/ws-dev logs             # logs of the running/most-recent server
 /path/to/ws-dev logs branch-a web -f
 /path/to/ws-dev run branch-a console

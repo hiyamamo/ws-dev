@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,23 +20,26 @@ import (
 const (
 	pidFileName      = "server.pid"
 	worktreeFileName = "current-worktree"
+	serverLogName    = "server.log"
 )
 
 func newServerCmd() *cobra.Command {
 	var (
-		portBase int
-		logDir   string
+		portBase   int
+		logDir     string
+		background bool
 	)
 	c := &cobra.Command{
 		Use:   "server [<worktree>]",
 		Short: "Start configured processes in a worktree (stops any prior server first; defaults to the repository root when the worktree is omitted)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runServer(firstArg(args), portBase, logDir)
+			return runServer(firstArg(args), portBase, logDir, background)
 		},
 	}
 	c.Flags().IntVar(&portBase, "port-base", 0, "Base port exposed as {{.PortBase}} / WS_DEV_PORT_BASE (default: 3000 or $WS_DEV_PORT_BASE)")
 	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
+	c.Flags().BoolVarP(&background, "background", "b", false, "Start the server detached in the background and return immediately (stop it with 'ws-dev server stop')")
 	c.AddCommand(newServerStopCmd())
 	return c
 }
@@ -64,7 +68,7 @@ func newServerStopCmd() *cobra.Command {
 	}
 }
 
-func runServer(worktreeArg string, portBase int, logDirFlag string) error {
+func runServer(worktreeArg string, portBase int, logDirFlag string, background bool) error {
 	rc, err := loadRepoCtx()
 	if err != nil {
 		return err
@@ -72,6 +76,15 @@ func runServer(worktreeArg string, portBase int, logDirFlag string) error {
 	worktree, dir, err := rc.resolveWorktree(worktreeArg)
 	if err != nil {
 		return err
+	}
+
+	// Background mode: the parent only validates config + worktree (so errors
+	// surface in the foreground) and then re-execs itself detached. The detached
+	// child runs the normal foreground flow below, owning the pid file and
+	// process lifecycle.
+	if background {
+		logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
+		return startBackground(worktreeArg, portBase, logDirFlag, logAbs)
 	}
 
 	sdir, err := stateDir()
@@ -114,6 +127,51 @@ func runServer(worktreeArg string, portBase int, logDirFlag string) error {
 		LogDir:   logAbs,
 		PortBase: portBase,
 	})
+}
+
+// startBackground re-execs `ws-dev server` (without --background) as a detached
+// process in its own session, redirecting its combined output to server.log in
+// the log directory. The child runs the foreground flow, so it stops any prior
+// server and records its own pid; `ws-dev server stop` stops it like any other.
+func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate executable: %w", err)
+	}
+	if err := os.MkdirAll(logAbs, 0o755); err != nil {
+		return fmt.Errorf("create log dir: %w", err)
+	}
+	logPath := filepath.Join(logAbs, serverLogName)
+	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", logPath, err)
+	}
+	defer func() { _ = logFile.Close() }()
+
+	// Pass the original flag values through unchanged so the child applies the
+	// same env/default precedence (e.g. portBase 0 -> $WS_DEV_PORT_BASE -> 3000).
+	args := []string{"server"}
+	if worktreeArg != "" {
+		args = append(args, worktreeArg)
+	}
+	if portBase != 0 {
+		args = append(args, "--port-base", strconv.Itoa(portBase))
+	}
+	if logDirFlag != "" {
+		args = append(args, "--log-dir", logDirFlag)
+	}
+
+	cmd := exec.Command(exe, args...)
+	cmd.Stdin = nil
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start background server: %w", err)
+	}
+	fmt.Printf("[ws-dev] server started in background (pid %d)\n", cmd.Process.Pid)
+	fmt.Printf("[ws-dev] logs: %s\n", logPath)
+	return nil
 }
 
 // stopPrior reads pidPath, sends SIGTERM to the process, waits for it to exit,
