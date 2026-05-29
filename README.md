@@ -167,11 +167,17 @@ Each process receives the following environment variables:
 - `truncate_log` — truncate `<name>.log` to 0 bytes.
 - `search_log` — regex search (RE2) with optional context lines.
 
-It is intentionally config-free: it resolves the log directory relative to its
-working directory (the worktree), so it works in any worktree even before the
-repo is registered in `config.yml`. Register it in each worktree's
-`.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary
-with `cwd` set to the worktree.
+It is intentionally config-free: it anchors the log directory to the worktree
+that contains its working directory (`git rev-parse --show-toplevel`), so it
+works in any worktree even before the repo is registered in `config.yml`.
+Register it in each worktree's `.claude/settings.local.json` via Claude Code,
+pointing at the `ws-dev` binary with `cwd` set to the worktree.
+
+Because `ws-dev server` exports `WS_DEV_LOG_DIR` as an absolute path for the
+worktree it runs in, that value can be inherited by an MCP server launched in
+another worktree. To keep each worktree's logs isolated, `mcp` ignores an
+absolute `WS_DEV_LOG_DIR` that points outside the current worktree and falls
+back to `<worktree>/log`. Pass `--log-dir` explicitly to override this.
 
 ### Claude Code skill
 

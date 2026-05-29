@@ -42,6 +42,22 @@ func CommonDir() (string, error) {
 	return abs, nil
 }
 
+// Toplevel returns the absolute path of the working tree that contains the
+// current directory (`git rev-parse --show-toplevel`). For a worktree created
+// by `git worktree add` this is that worktree's root, not the main worktree.
+func Toplevel() (string, error) {
+	out, err := run("rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+	}
+	dir := strings.TrimSpace(out)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
 // Worktrees returns all worktrees of the current repository.
 func Worktrees() ([]Worktree, error) {
 	out, err := run("worktree", "list", "--porcelain")

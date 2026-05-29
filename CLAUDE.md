@@ -97,7 +97,9 @@ A worktree name is resolved against `git worktree list` by directory basename (`
 
 ### Log directory resolution order
 
-Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in config -> default `log`. The base is the worktree directory. This order is consistent across `server` / `logs` / `mcp`; `mcp` resolves relative to `cwd` (expected to be inside the worktree).
+Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in config -> default `log`. The base is the worktree directory. This order is consistent across `server` / `logs` / `mcp`; `mcp` anchors the base to the worktree that contains `cwd` (`git rev-parse --show-toplevel`, falling back to `cwd` outside a repo).
+
+For `mcp`, the `WS_DEV_LOG_DIR` precedence has one isolation guard: `ws-dev server` (procman) exports `WS_DEV_LOG_DIR` as the *absolute* log path of the worktree it runs in, and that value is inherited by any MCP server launched in the same environment. A relative value is joined onto the worktree base; an absolute value is honored only when it points inside the current worktree, otherwise it belongs to another worktree and is ignored (the base `log` default is used instead). An explicit `--log-dir` flag is always honored as given. This keeps each worktree's MCP logs isolated rather than leaking another worktree's logs through a stale env var.
 
 ### Process template expansion
 
