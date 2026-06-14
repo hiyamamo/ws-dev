@@ -133,6 +133,12 @@ repos:
     # Optional wrapper applied to every process/task.
     # exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
 
+    # Commands run before any process starts (see "Setup commands" below).
+    setup:
+      - "direnv allow"
+      - "mise trust"
+      - "pnpm install"
+
     processes:
       web:
         cmd: "bundle exec rails s -b 0.0.0.0 -p {{.PortBase}}"
@@ -157,6 +163,32 @@ Template variables available inside `processes.<name>.cmd`:
 Each process receives the following environment variables:
 - `WS_DEV_WORKTREE`, `WS_DEV_ROOT`, `WS_DEV_DIR`, `WS_DEV_PORT_BASE`, `WS_DEV_LOG_DIR`
 - Plus anything listed under `processes.<name>.env`.
+
+### Setup commands
+
+`setup` is a list of commands that `ws-dev server` runs **before** starting any
+process, in the worktree directory, via the shell (`sh -c`). Use it to prepare
+the environment so the server reliably comes up — for example authorizing
+direnv/mise and installing dependencies:
+
+```yaml
+    setup:
+      - "direnv allow"
+      - "mise trust"
+      - "pnpm install"
+```
+
+- Commands run sequentially in the listed order; the **first non-zero exit
+  aborts** the start, so the server never comes up on a broken environment.
+- They run **as written** — `setup` is *not* wrapped by `exec_wrapper`, because
+  bootstrap steps like `direnv allow` must run directly (wrapping them would be
+  circular). A step that needs the project toolchain can include the wrapper
+  itself, e.g. `"mise exec -- pnpm install"` or `"direnv exec . pnpm install"`.
+- The same template vars as processes are available (`{{.Worktree}}`,
+  `{{.PortBase}}`, `{{.Root}}`, `{{.Dir}}`), and the same `WS_DEV_*` environment
+  variables are exported.
+- With `ws-dev server -b`, setup runs in the detached child, so its output is
+  captured in `server.log` and the foreground call still returns immediately.
 
 ## MCP
 

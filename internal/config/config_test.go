@@ -31,6 +31,9 @@ func TestLoadAndLookup(t *testing.T) {
   github.com/owner/repo:
     log_dir: logs
     exec_wrapper: ["mise", "exec", "--"]
+    setup:
+      - "direnv allow"
+      - "mise trust"
     processes:
       web:
         cmd: "echo hi"
@@ -68,6 +71,9 @@ func TestLoadAndLookup(t *testing.T) {
 		}
 		if len(rc.ExecWrapper) != 3 {
 			t.Errorf("exec_wrapper = %+v", rc.ExecWrapper)
+		}
+		if len(rc.Setup) != 2 || rc.Setup[0] != "direnv allow" || rc.Setup[1] != "mise trust" {
+			t.Errorf("setup = %+v", rc.Setup)
 		}
 	}
 

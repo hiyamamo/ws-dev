@@ -71,7 +71,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 | `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form. `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
 | `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
 | `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio. Operates on a `config.RepoConfig`. |
-| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `text/template`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. |
+| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `text/template` (`Expand`), places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
 | `internal/mcp` | stdio JSON-RPC MCP server implementation (`list_logs` / `tail_log` / `truncate_log` / `search_log`) |
 
 ## Key design points
@@ -85,7 +85,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 
 ### Background mode
 
-`ws-dev server -b` / `--background` starts the server detached and returns immediately. The foreground process validates the config + worktree (so misconfiguration surfaces synchronously), then re-execs itself without `-b` in a new session (`Setsid`) with the child's combined output redirected to `<log-dir>/server.log`. The detached child runs the normal foreground flow, so it owns the pid file and process lifecycle exactly as a foreground run would; `ws-dev server stop` (or another `ws-dev server`) stops it via the recorded pid like any other run. Per-process logs still go to `<log-dir>/<name>.log`.
+`ws-dev server -b` / `--background` starts the server detached and returns immediately. The foreground process validates the config + worktree (so misconfiguration surfaces synchronously), then re-execs itself without `-b` in a new session (`Setsid`) with the child's combined output redirected to `<log-dir>/server.log`. The detached child runs the normal foreground flow, so it owns the pid file and process lifecycle exactly as a foreground run would; `ws-dev server stop` (or another `ws-dev server`) stops it via the recorded pid like any other run. Per-process logs still go to `<log-dir>/<name>.log`. Because `setup` runs in the foreground flow, it executes in the detached child (its output lands in `server.log`), keeping the `-b` parent's return immediate.
 
 ### Worktree resolution
 
@@ -110,6 +110,10 @@ Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_d
 
 After expansion, the string is split into argv via shell-like whitespace splitting (`tasks.fields`). Quoting support is minimal (`"..."` / `'...'` only; no escapes).
 
+### Setup commands
+
+`setup` (a `[]string` on `RepoConfig`) lists commands `ws-dev server` runs before any process starts, via `procman.RunSetup`. Each entry is template-expanded with the same `Vars` as process cmds (`Expand`) and run with `sh -c` in the worktree dir, stdio inherited, with the same `WS_DEV_*` env. The first non-zero exit aborts the start and is returned (so the server never comes up on a broken environment). Unlike processes/tasks, setup is **not** wrapped by `exec_wrapper`: bootstrap steps like `direnv allow` / `mise trust` must run as-is (wrapping `direnv allow` in `direnv exec .` would be circular). A step needing the toolchain includes the wrapper itself (e.g. `mise exec -- pnpm install`). `RunSetup` is invoked from `runServer` just before `procman.Run`, sharing the same `procman.Opts`.
+
 ## Manual verification
 
 ```bash
@@ -118,7 +122,7 @@ export WS_DEV_CONFIG=/tmp/ws-config/config.yml
 
 cd /path/to/a/real/repo
 /path/to/ws-dev init             # creates the config + prints this repo's key
-# Add a `repos:` entry under that key with processes/tasks.
+# Add a `repos:` entry under that key with processes/tasks (and optional setup).
 
 claude -w branch-a               # or: git worktree add .claude/worktrees/branch-a -b branch-a
 /path/to/ws-dev server branch-a  # start processes in the worktree (foreground)
