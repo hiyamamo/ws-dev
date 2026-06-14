@@ -141,20 +141,27 @@ func Run(o Opts) error {
 		mu.Unlock()
 		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] started %s (pid %d): %s\n", name, cmd.Process.Pid, strings.Join(argv, " "))
 
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			copyTee(outPipe, logFile, o.Stdout, prefix, name, filter)
-		}()
-		go func() {
-			defer wg.Done()
-			copyTee(errPipe, logFile, o.Stderr, prefix, name, filter)
-		}()
 		wg.Add(1)
-		go func(name string, c *exec.Cmd, lf *os.File) {
+		go func() {
 			defer wg.Done()
-			err := c.Wait()
-			_ = lf.Close()
+
+			// Drain BOTH pipes to EOF before calling Wait. os/exec closes the
+			// pipe fds inside Wait, so reading after Wait races with that close
+			// and can silently drop the final lines (see StdoutPipe docs).
+			var ioWg sync.WaitGroup
+			ioWg.Add(2)
+			go func() {
+				defer ioWg.Done()
+				copyTee(outPipe, logFile, o.Stdout, prefix, name, filter)
+			}()
+			go func() {
+				defer ioWg.Done()
+				copyTee(errPipe, logFile, o.Stderr, prefix, name, filter)
+			}()
+			ioWg.Wait()
+
+			err := cmd.Wait()
+			_ = logFile.Close()
 			mu.Lock()
 			delete(children, name)
 			mu.Unlock()
@@ -163,7 +170,7 @@ func Run(o Opts) error {
 			} else {
 				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited cleanly\n", name)
 			}
-		}(name, cmd, logFile)
+		}()
 	}
 
 	// Wait for signal or for all children to exit.
