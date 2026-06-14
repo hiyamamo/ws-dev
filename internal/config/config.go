@@ -19,6 +19,7 @@ type Process struct {
 type RepoConfig struct {
 	LogDir      string             `yaml:"log_dir,omitempty"`
 	ExecWrapper []string           `yaml:"exec_wrapper,omitempty"`
+	Setup       []string           `yaml:"setup,omitempty"`
 	Processes   map[string]Process `yaml:"processes,omitempty"`
 	Tasks       map[string]string  `yaml:"tasks,omitempty"`
 }

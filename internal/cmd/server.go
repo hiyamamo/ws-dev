@@ -119,14 +119,24 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 
 	logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
 
-	return procman.Run(procman.Opts{
+	opts := procman.Opts{
 		Cfg:      rc.Config,
 		Worktree: worktree,
 		Dir:      dir,
 		Root:     rc.Root,
 		LogDir:   logAbs,
 		PortBase: portBase,
-	})
+	}
+
+	// Run setup commands (direnv allow / mise trust / pnpm install, etc.) before
+	// starting any process, so the server comes up in a prepared environment. A
+	// failed setup aborts the start. In background mode this runs in the detached
+	// child, so its output goes to server.log.
+	if err := procman.RunSetup(opts); err != nil {
+		return err
+	}
+
+	return procman.Run(opts)
 }
 
 // startBackground re-execs `ws-dev server` (without --background) as a detached

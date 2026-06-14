@@ -207,15 +207,26 @@ func Run(o Opts) error {
 }
 
 func buildArgv(cfg *config.RepoConfig, cmd string, v Vars) ([]string, error) {
+	expanded, err := Expand(cmd, v)
+	if err != nil {
+		return nil, err
+	}
+	return tasks.BuildArgv(cfg, expanded, nil), nil
+}
+
+// Expand evaluates a command string as a text/template against the worktree
+// vars ({{.Worktree}} / {{.PortBase}} / {{.Root}} / {{.Dir}}). It is shared by
+// process cmd expansion and by setup commands (see RunSetup).
+func Expand(cmd string, v Vars) (string, error) {
 	tmpl, err := template.New("cmd").Parse(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("parse cmd template: %w", err)
+		return "", fmt.Errorf("parse cmd template: %w", err)
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, v); err != nil {
-		return nil, fmt.Errorf("expand cmd template: %w", err)
+		return "", fmt.Errorf("expand cmd template: %w", err)
 	}
-	return tasks.BuildArgv(cfg, buf.String(), nil), nil
+	return buf.String(), nil
 }
 
 func copyTee(src io.Reader, logFile io.Writer, stdout io.Writer, prefix, name string, filter *outputFilter) {

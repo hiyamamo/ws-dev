@@ -15,6 +15,17 @@ repos:
   #   # Optional wrapper applied to every process/task.
   #   # exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
   #
+  #   # Commands run by `ws-dev server` before any process starts, in the
+  #   # worktree, via the shell. Use them to prepare the environment so the
+  #   # server comes up reliably. The first failure aborts the start. These run
+  #   # as written (NOT through exec_wrapper); a step that needs the toolchain
+  #   # can include the wrapper itself (e.g. "mise exec -- pnpm install").
+  #   # The same template vars as processes are available ({{.Worktree}} etc.).
+  #   # setup:
+  #   #   - "direnv allow"
+  #   #   - "mise trust"
+  #   #   - "pnpm install"
+  #
   #   # Processes started by `ws-dev server <worktree>`.
   #   # Template vars in cmd: {{.Worktree}} {{.PortBase}} {{.Root}} {{.Dir}}
   #   processes:
