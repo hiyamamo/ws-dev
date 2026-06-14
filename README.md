@@ -205,16 +205,25 @@ repo is registered in `config.yml`. Register it in each worktree's
 `.claude/settings.local.json` via Claude Code, pointing at the `ws-dev` binary
 with `cwd` set to the worktree.
 
-### Claude Code skill
+### Claude Code skills
 
-This repo ships an agent-skill at `skills/ws-dev-logs/` that teaches Claude when to reach for each MCP tool and how to chain them (crash investigation, error search, reset-and-retry). Install it with [`gh skill`](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/) (GitHub CLI v2.90.0+):
+This repo ships two agent-skills under `skills/`:
+
+- `skills/ws-dev-cli/` — drive the CLI itself (start/stop the server, follow
+  logs, run tasks, configure `config.yml`) without consulting `--help`.
+- `skills/ws-dev-logs/` — when to reach for each MCP log tool and how to chain
+  them (crash investigation, error search, reset-and-retry).
+
+Install them with [`gh skill`](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/) (GitHub CLI v2.90.0+):
 
 ```bash
 # Per-worktree (recommended):
 cd .claude/worktrees/<name>
+gh skill install hiyamamo/ws-dev ws-dev-cli  --agent claude-code --scope project
 gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope project
 
 # Or once, globally for all Claude Code sessions:
+gh skill install hiyamamo/ws-dev ws-dev-cli  --agent claude-code --scope user
 gh skill install hiyamamo/ws-dev ws-dev-logs --agent claude-code --scope user
 ```
 

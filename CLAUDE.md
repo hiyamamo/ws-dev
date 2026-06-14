@@ -74,6 +74,31 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 | `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `text/template` (`Expand`), places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
 | `internal/mcp` | stdio JSON-RPC MCP server implementation (`list_logs` / `tail_log` / `truncate_log` / `search_log`) |
 
+## Agent skills (keep in sync with the CLI)
+
+This repo ships agent skills under `skills/`:
+
+| Skill | Covers |
+|-------|--------|
+| `skills/ws-dev-cli/` | The terminal CLI: `init` / `server` (+ `-b` / `stop`) / `logs` / `run` / `tasks` / `update`, plus `config.yml` (`processes` / `tasks` / `setup` / `exec_wrapper`, template vars, `WS_DEV_*` env, resolution orders). |
+| `skills/ws-dev-logs/` | The MCP log tools (`list_logs` / `tail_log` / `search_log` / `truncate_log`) exposed by `ws-dev mcp`. |
+
+**Whenever you change the user-facing surface, update the matching skill in the
+same change.** A change is "user-facing" when it adds/renames/removes a command,
+flag, MCP tool, config key, template var, environment variable, or default, or
+when it changes a resolution order or any documented behavior. Concretely:
+
+- Code under `internal/cmd/` (commands/flags) → update `skills/ws-dev-cli/SKILL.md`.
+- Code under `internal/mcp/` (MCP tools/args) → update `skills/ws-dev-logs/SKILL.md`.
+- Code under `internal/config/` (config schema) → update `skills/ws-dev-cli/SKILL.md`.
+- Keep `README.md` and this file consistent too.
+
+A `PostToolUse` hook (`.claude/hooks/skill-sync-reminder.sh`, wired in
+`.claude/settings.json`) prints a reminder when you edit those packages, so this
+doesn't depend on memory alone. The skill is still the source of truth for how
+the feature is used — don't just append; revise the affected sections so it reads
+as if the feature always existed.
+
 ## Key design points
 
 ### One server per repository
