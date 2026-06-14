@@ -52,6 +52,7 @@ func newLogsCmd() *cobra.Command {
 			}
 			return tailLog(filepath.Join(logAbs, name+".log"), nLines, follow)
 		},
+		ValidArgsFunction: completeWorktrees,
 	}
 	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
 	c.Flags().BoolVarP(&follow, "follow", "f", false, "Follow the log (tail -f)")

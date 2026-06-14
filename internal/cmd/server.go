@@ -36,6 +36,7 @@ func newServerCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runServer(firstArg(args), portBase, logDir, background)
 		},
+		ValidArgsFunction: completeWorktrees,
 	}
 	c.Flags().IntVar(&portBase, "port-base", 0, "Base port exposed as {{.PortBase}} / WS_DEV_PORT_BASE (default: 3000 or $WS_DEV_PORT_BASE)")
 	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
