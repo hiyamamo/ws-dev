@@ -42,7 +42,7 @@ the MCP server, use the **ws-dev-logs** skill.
 | `ws-dev run [<worktree>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
 | `ws-dev tasks` | List tasks defined for this repo. |
 | `ws-dev mcp` | stdio MCP server for log ops (see the **ws-dev-logs** skill). |
-| `ws-dev update` | Replace the running binary with the latest GitHub release (`--force` to reinstall). |
+| `ws-dev update` | Replace the running binary with the latest GitHub release (`--force` to reinstall). Uses `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` to authenticate the API call. |
 | `ws-dev version` | Print the version. |
 
 ### `ws-dev server` — start the app
@@ -186,6 +186,10 @@ its output lands in `server.log`.
   and add the printed key under `repos:`.
 - **Wrong/old binary** — `which -a ws-dev` and `ws-dev version`; a stale copy
   earlier on `PATH` shadows a fresh install. `ws-dev update` self-updates.
+- **`ws-dev update` hits GitHub rate limit** — unauthenticated requests are
+  capped at 60/hour per IP. Set `$GH_TOKEN` or `$GITHUB_TOKEN`, or run
+  `gh auth login` so `gh auth token` returns a token; `update` picks them up
+  automatically (env var → `gh auth token`).
 
 ## Caveats
 

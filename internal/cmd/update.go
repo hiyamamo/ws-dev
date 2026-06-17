@@ -4,12 +4,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -109,6 +111,11 @@ func fetchLatestRelease() (*ghRelease, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "ws-dev-updater")
+	authed := false
+	if tok := githubToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+		authed = true
+	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -117,7 +124,11 @@ func fetchLatestRelease() (*ghRelease, error) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("github api %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		msg := fmt.Sprintf("github api %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		if (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) && !authed {
+			msg += "\n(unauthenticated requests are limited to 60/hour; set GH_TOKEN or GITHUB_TOKEN, or run `gh auth login` so `gh auth token` returns a token)"
+		}
+		return nil, fmt.Errorf("%s", msg)
 	}
 	var rel ghRelease
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
@@ -127,6 +138,24 @@ func fetchLatestRelease() (*ghRelease, error) {
 		return nil, fmt.Errorf("github api returned no tag_name")
 	}
 	return &rel, nil
+}
+
+// githubToken returns a GitHub token to authenticate the API call, in order:
+// $GH_TOKEN, $GITHUB_TOKEN, then `gh auth token`. Returns "" if none is
+// available; the caller falls back to an unauthenticated request.
+func githubToken() string {
+	for _, k := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if t := strings.TrimSpace(os.Getenv(k)); t != "" {
+			return t
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func download(url string) ([]byte, error) {

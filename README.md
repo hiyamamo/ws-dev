@@ -65,6 +65,10 @@ release `checksums.txt`, and atomically swaps the running binary. If it lives in
 a protected directory (e.g. `/usr/local/bin`), re-run with `sudo`. (For
 `go install` setups, `go install ...@latest` remains an alternative.)
 
+The GitHub API call uses `$GH_TOKEN` or `$GITHUB_TOKEN` if set, otherwise falls
+back to `gh auth token`. Without any token, unauthenticated requests are capped
+at 60/hour per IP — set one of those if you hit the rate limit.
+
 ## Development setup
 
 After cloning this repo, install the toolchain via `mise` and enable the lefthook git hooks (runs `secretlint` on staged files before each commit):
