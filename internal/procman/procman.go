@@ -40,6 +40,14 @@ type Opts struct {
 	Stderr   io.Writer
 }
 
+// outLine is one unit of console output handed to the single printer
+// goroutine. data already contains prefix+line concatenated, so the printer
+// writes it in one Write and lines from different processes never interleave.
+type outLine struct {
+	w    io.Writer // target console writer (o.Stdout or o.Stderr)
+	data []byte    // prefix + line, ready to write as one unit
+}
+
 // Run starts all configured processes and blocks until a shutdown signal
 // is received or all child processes exit.
 func Run(o Opts) error {
@@ -85,6 +93,19 @@ func Run(o Opts) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	children := map[string]*exec.Cmd{}
+
+	// Single owner of the console writers: every copyTee sends formatted lines
+	// here instead of writing directly, so concurrent processes never split
+	// each other's prefix/line. outCh is closed once all senders are done;
+	// printDone signals that the printer has flushed everything.
+	outCh := make(chan outLine)
+	printDone := make(chan struct{})
+	go func() {
+		defer close(printDone)
+		for msg := range outCh {
+			_, _ = msg.w.Write(msg.data)
+		}
+	}()
 
 	for _, name := range names {
 		p := o.Cfg.Processes[name]
@@ -141,20 +162,27 @@ func Run(o Opts) error {
 		mu.Unlock()
 		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] started %s (pid %d): %s\n", name, cmd.Process.Pid, strings.Join(argv, " "))
 
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			copyTee(outPipe, logFile, o.Stdout, prefix, name, filter)
-		}()
-		go func() {
-			defer wg.Done()
-			copyTee(errPipe, logFile, o.Stderr, prefix, name, filter)
-		}()
 		wg.Add(1)
-		go func(name string, c *exec.Cmd, lf *os.File) {
+		go func() {
 			defer wg.Done()
-			err := c.Wait()
-			_ = lf.Close()
+
+			// Drain BOTH pipes to EOF before calling Wait. os/exec closes the
+			// pipe fds inside Wait, so reading after Wait races with that close
+			// and can silently drop the final lines (see StdoutPipe docs).
+			var ioWg sync.WaitGroup
+			ioWg.Add(2)
+			go func() {
+				defer ioWg.Done()
+				copyTee(outPipe, logFile, o.Stdout, prefix, name, filter, outCh)
+			}()
+			go func() {
+				defer ioWg.Done()
+				copyTee(errPipe, logFile, o.Stderr, prefix, name, filter, outCh)
+			}()
+			ioWg.Wait()
+
+			err := cmd.Wait()
+			_ = logFile.Close()
 			mu.Lock()
 			delete(children, name)
 			mu.Unlock()
@@ -163,13 +191,16 @@ func Run(o Opts) error {
 			} else {
 				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited cleanly\n", name)
 			}
-		}(name, cmd, logFile)
+		}()
 	}
 
-	// Wait for signal or for all children to exit.
+	// Wait for signal or for all children to exit. Once every copyTee has
+	// returned (wg.Wait), no sender remains, so this is the one safe place to
+	// close outCh.
 	allDone := make(chan struct{})
 	go func() {
 		wg.Wait()
+		close(outCh)
 		close(allDone)
 	}()
 
@@ -177,6 +208,7 @@ func Run(o Opts) error {
 	case sig := <-sigCh:
 		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] received %s, shutting down\n", sig)
 	case <-allDone:
+		<-printDone // drain: let the printer flush before returning
 		return nil
 	}
 
@@ -203,6 +235,7 @@ func Run(o Opts) error {
 		}
 		<-allDone
 	}
+	<-printDone // drain: let the printer flush before returning
 	return nil
 }
 
@@ -229,15 +262,20 @@ func Expand(cmd string, v Vars) (string, error) {
 	return buf.String(), nil
 }
 
-func copyTee(src io.Reader, logFile io.Writer, stdout io.Writer, prefix, name string, filter *outputFilter) {
+func copyTee(src io.Reader, logFile io.Writer, w io.Writer, prefix, name string, filter *outputFilter, outCh chan<- outLine) {
 	r := bufio.NewReader(src)
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 {
 			_, _ = logFile.Write(line)
 			if filter.shows(name) {
-				_, _ = stdout.Write([]byte(prefix))
-				_, _ = stdout.Write(line)
+				// Concatenate prefix+line into a fresh buffer and hand it to the
+				// printer as one unit. The copy is required: line is only valid
+				// until the next ReadBytes, but the printer reads it later.
+				buf := make([]byte, 0, len(prefix)+len(line))
+				buf = append(buf, prefix...)
+				buf = append(buf, line...)
+				outCh <- outLine{w: w, data: buf}
 			}
 		}
 		if err != nil {
