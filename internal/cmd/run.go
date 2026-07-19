@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 
 	"github.com/hiyamamo/ws-dev/internal/tasks"
@@ -32,11 +34,20 @@ first argument is the task name.`,
 				return err
 			}
 			worktreeArg, task, extra := splitRunArgs(rc, args)
-			_, dir, err := rc.resolveWorktree(worktreeArg)
+			worktree, dir, err := rc.resolveWorktree(worktreeArg)
 			if err != nil {
 				return err
 			}
-			return tasks.Run(rc.Config, dir, task, extra)
+			// Tasks get the same template vars and WS_DEV_* environment as
+			// processes and setup commands.
+			v := tasks.Vars{
+				Worktree: worktree,
+				Root:     rc.Root,
+				Dir:      dir,
+				PortBase: resolvePortBase(0),
+			}
+			logAbs := filepath.Join(dir, resolveLogDir(rc.Config, ""))
+			return tasks.Run(rc.Config, task, extra, v, logAbs)
 		},
 	}
 	return c

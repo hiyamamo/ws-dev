@@ -70,8 +70,8 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 | `internal/cmd` | Cobra subcommand definitions (init/server/status/logs/run/tasks/mcp/update/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). `update.go` self-updates from the latest GitHub release (checksum-verified, atomic replace; the API call is authenticated via `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` to avoid the 60/hour unauthenticated rate limit). |
 | `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form. `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
 | `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
-| `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio. Operates on a `config.RepoConfig`. |
-| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `text/template` (`Expand`), places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
+| `internal/tasks` | Runs template-expanded task commands prefixed with `exec_wrapper`, inheriting stdio, with the shared `WS_DEV_*` env. Also home of the shared `Vars` / `Expand` / `Env` helpers used by `procman`. |
+| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `tasks.Expand`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
 | `internal/mcp` | stdio JSON-RPC MCP server implementation (`list_logs` / `tail_log` / `truncate_log` / `search_log`) |
 
 ## Agent skills (keep in sync with the CLI)
@@ -126,9 +126,9 @@ A worktree name is resolved against `git worktree list` by directory basename (`
 
 Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in config -> default `log`. The base is the worktree directory. This order is consistent across `server` / `logs` / `mcp`; `mcp` resolves relative to `cwd` (expected to be inside the worktree).
 
-### Process template expansion
+### Template expansion (processes / tasks / setup)
 
-`processes.<name>.cmd` is evaluated as a Go `text/template`:
+`processes.<name>.cmd`, `tasks.<name>`, and `setup` entries are evaluated as a Go `text/template` (`tasks.Expand`):
 
 - `{{.Worktree}}` — worktree name
 - `{{.PortBase}}` — `--port-base` / `$WS_DEV_PORT_BASE` / default 3000
@@ -139,7 +139,7 @@ After expansion, the string is split into argv via shell-like whitespace splitti
 
 ### Setup commands
 
-`setup` (a `[]string` on `RepoConfig`) lists commands `ws-dev server` runs before any process starts, via `procman.RunSetup`. Each entry is template-expanded with the same `Vars` as process cmds (`Expand`) and run with `sh -c` in the worktree dir, stdio inherited, with the same `WS_DEV_*` env. The first non-zero exit aborts the start and is returned (so the server never comes up on a broken environment). Unlike processes/tasks, setup is **not** wrapped by `exec_wrapper`: bootstrap steps like `direnv allow` / `mise trust` must run as-is (wrapping `direnv allow` in `direnv exec .` would be circular). A step needing the toolchain includes the wrapper itself (e.g. `mise exec -- pnpm install`). `RunSetup` is invoked from `runServer` just before `procman.Run`, sharing the same `procman.Opts`.
+`setup` (a `[]string` on `RepoConfig`) lists commands `ws-dev server` runs before any process starts, via `procman.RunSetup`. Each entry is template-expanded with the same `Vars` as process cmds (`tasks.Expand`) and run with `sh -c` in the worktree dir, stdio inherited, with the same `WS_DEV_*` env. The first non-zero exit aborts the start and is returned (so the server never comes up on a broken environment). Unlike processes/tasks, setup is **not** wrapped by `exec_wrapper`: bootstrap steps like `direnv allow` / `mise trust` must run as-is (wrapping `direnv allow` in `direnv exec .` would be circular). A step needing the toolchain includes the wrapper itself (e.g. `mise exec -- pnpm install`). `RunSetup` is invoked from `runServer` just before `procman.Run`, sharing the same `procman.Opts`.
 
 ## Manual verification
 

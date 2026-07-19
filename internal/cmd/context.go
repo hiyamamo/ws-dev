@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/hiyamamo/ws-dev/internal/config"
 	"github.com/hiyamamo/ws-dev/internal/git"
@@ -69,6 +70,19 @@ func stateDir() (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// resolvePortBase applies precedence flag > $WS_DEV_PORT_BASE > 3000.
+func resolvePortBase(flagValue int) int {
+	if flagValue != 0 {
+		return flagValue
+	}
+	if v := os.Getenv("WS_DEV_PORT_BASE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n != 0 {
+			return n
+		}
+	}
+	return 3000
 }
 
 // resolveLogDir applies precedence flag > env > config > "log".
