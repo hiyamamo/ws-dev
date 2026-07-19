@@ -67,7 +67,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 
 | Package | Responsibility |
 |---------|----------------|
-| `internal/cmd` | Cobra subcommand definitions (init/server/logs/run/tasks/mcp/update/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). `update.go` self-updates from the latest GitHub release (checksum-verified, atomic replace; the API call is authenticated via `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` to avoid the 60/hour unauthenticated rate limit). |
+| `internal/cmd` | Cobra subcommand definitions (init/server/status/logs/run/tasks/mcp/update/version). `context.go` resolves the repo config + worktree (replaces the old workspace lookup). `update.go` self-updates from the latest GitHub release (checksum-verified, atomic replace; the API call is authenticated via `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` to avoid the 60/hour unauthenticated rate limit). |
 | `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form. `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
 | `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
 | `internal/tasks` | Runs commands prefixed with `exec_wrapper`, inheriting stdio. Operates on a `config.RepoConfig`. |
@@ -107,6 +107,8 @@ as if the feature always existed.
 
 - `<git-common-dir>/ws-dev/server.pid` — our own PID
 - `<git-common-dir>/ws-dev/current-worktree` — most recent worktree (used by `ws-dev logs` when omitted)
+
+`ws-dev status` reads these two files (liveness via signal 0) to report whether a server is running and for which worktree; it needs no config entry, so it works in unregistered repos too.
 
 ### Background mode
 

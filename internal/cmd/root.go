@@ -16,6 +16,7 @@ settings live in ~/.config/ws-dev/config.yml, keyed by the repo's git remote.`,
 	root.AddCommand(
 		newInitCmd(),
 		newServerCmd(),
+		newStatusCmd(),
 		newLogsCmd(),
 		newRunCmd(),
 		newTasksCmd(),

@@ -185,31 +185,44 @@ func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string
 	return nil
 }
 
-// stopPrior reads pidPath, sends SIGTERM to the process, waits for it to exit,
-// and returns whether a running process was stopped. Missing pid file is OK.
-func stopPrior(pidPath string) (bool, error) {
+// readServerPid reads pidPath and reports the recorded pid and whether that
+// process is currently alive (checked with signal 0). A missing, malformed, or
+// stale pid file yields alive=false; stale files are removed on the way.
+func readServerPid(pidPath string) (pid int, alive bool, err error) {
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return false, nil
+			return 0, false, nil
 		}
-		return false, err
+		return 0, false, err
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	pid, err = strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil || pid <= 0 {
 		_ = os.Remove(pidPath)
-		return false, nil
+		return 0, false, nil
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		_ = os.Remove(pidPath)
-		return false, nil
+		return 0, false, nil
 	}
 	// Signal 0: check liveness.
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
 		_ = os.Remove(pidPath)
-		return false, nil
+		return 0, false, nil
 	}
+	return pid, true, nil
+}
+
+// stopPrior reads pidPath, sends SIGTERM to the process, waits for it to exit,
+// and returns whether a running process was stopped. Missing pid file is OK.
+func stopPrior(pidPath string) (bool, error) {
+	pid, alive, err := readServerPid(pidPath)
+	if err != nil || !alive {
+		return false, err
+	}
+	// FindProcess never fails on unix; readServerPid just confirmed liveness.
+	proc, _ := os.FindProcess(pid)
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		return false, err
 	}

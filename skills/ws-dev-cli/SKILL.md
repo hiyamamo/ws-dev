@@ -20,7 +20,8 @@ the MCP server, use the **ws-dev-logs** skill.
   shared git dir (`<git-common-dir>/ws-dev/`, inside `.git`, never committed and
   shared by every worktree). Starting a new server **stops any prior one first**
   (SIGTERM, then SIGKILL on timeout). Running two worktrees' servers in parallel
-  is not supported, to avoid port conflicts.
+  is not supported, to avoid port conflicts. `ws-dev status` reports whether a
+  server is currently running and for which worktree.
 - **Worktree argument is optional and positional.** A worktree is resolved by
   directory basename against `git worktree list`; an ambiguous basename is an
   error. When omitted, commands default to the repository's **main worktree
@@ -38,6 +39,7 @@ the MCP server, use the **ws-dev-logs** skill.
 | `ws-dev server [<worktree>]` | Start all `processes` in parallel in the worktree (stops any prior server first). Foreground; streams output. |
 | `ws-dev server -b [<worktree>]` | Same, but **detached** — returns immediately; output goes to `<log-dir>/server.log`. |
 | `ws-dev server stop` | Stop the currently running server. |
+| `ws-dev status` | Show whether the server is running (pid) and for which worktree. |
 | `ws-dev logs [<worktree>] [<name>]` | List `*.log`, or tail `<name>.log`. |
 | `ws-dev run [<worktree>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
 | `ws-dev tasks` | List tasks defined for this repo. |
@@ -69,7 +71,8 @@ processes. A failing `setup` step aborts the start (see **Setup commands**).
 another `ws-dev server` / `ws-dev server stop` arrives. `-b` re-execs itself in a
 new session and exits; everything (including `setup`) then runs in the detached
 child, with combined output in `server.log`. Per-process output still goes to
-`<log-dir>/<name>.log`. Stop a background server with `ws-dev server stop`.
+`<log-dir>/<name>.log`. Check a background server with `ws-dev status`; stop it
+with `ws-dev server stop`.
 
 ### `ws-dev logs` — find and tail logs
 
