@@ -9,20 +9,6 @@ import (
 	"github.com/hiyamamo/ws-dev/internal/config"
 )
 
-func TestExpand(t *testing.T) {
-	v := Vars{Worktree: "branch-a", Root: "/repo", Dir: "/repo/wt", PortBase: 3000}
-	got, err := Expand("p={{.PortBase}} w={{.Worktree}} d={{.Dir}}", v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "p=3000 w=branch-a d=/repo/wt"; got != want {
-		t.Errorf("Expand = %q, want %q", got, want)
-	}
-	if _, err := Expand("{{.Nope}}", v); err == nil {
-		t.Error("expected error for unknown template field")
-	}
-}
-
 // TestRunSetupRunsInOrderInDir verifies setup commands run sequentially in the
 // worktree directory with template vars expanded.
 func TestRunSetupRunsInOrderInDir(t *testing.T) {

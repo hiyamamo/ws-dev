@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/hiyamamo/ws-dev/internal/tasks"
 )
 
 // RunSetup executes the configured setup commands sequentially, before the
@@ -35,17 +37,11 @@ func RunSetup(o Opts) error {
 		stderr = os.Stderr
 	}
 
-	v := Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase}
-	env := append(os.Environ(),
-		"WS_DEV_WORKTREE="+o.Worktree,
-		"WS_DEV_ROOT="+o.Root,
-		"WS_DEV_DIR="+o.Dir,
-		fmt.Sprintf("WS_DEV_PORT_BASE=%d", o.PortBase),
-		"WS_DEV_LOG_DIR="+o.LogDir,
-	)
+	v := tasks.Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase}
+	env := append(os.Environ(), tasks.Env(v, o.LogDir)...)
 
 	for i, raw := range o.Cfg.Setup {
-		cmdStr, err := Expand(raw, v)
+		cmdStr, err := tasks.Expand(raw, v)
 		if err != nil {
 			return fmt.Errorf("setup[%d]: %w", i, err)
 		}

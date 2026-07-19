@@ -2,7 +2,6 @@ package procman
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,20 +13,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"text/template"
 	"time"
 
 	"github.com/hiyamamo/ws-dev/internal/config"
 	"github.com/hiyamamo/ws-dev/internal/tasks"
 )
-
-// Vars are template variables exposed to process cmd strings.
-type Vars struct {
-	Worktree string // worktree name (basename)
-	Root     string // main worktree root (absolute)
-	Dir      string // worktree directory where the process runs (absolute)
-	PortBase int
-}
 
 type Opts struct {
 	Cfg      *config.RepoConfig
@@ -109,7 +99,7 @@ func Run(o Opts) error {
 
 	for _, name := range names {
 		p := o.Cfg.Processes[name]
-		argv, err := buildArgv(o.Cfg, p.Cmd, Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase})
+		argv, err := buildArgv(o.Cfg, p.Cmd, tasks.Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase})
 		if err != nil {
 			cancel()
 			return err
@@ -126,13 +116,7 @@ func Run(o Opts) error {
 
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		cmd.Dir = o.Dir
-		cmd.Env = append(os.Environ(),
-			"WS_DEV_WORKTREE="+o.Worktree,
-			"WS_DEV_ROOT="+o.Root,
-			"WS_DEV_DIR="+o.Dir,
-			fmt.Sprintf("WS_DEV_PORT_BASE=%d", o.PortBase),
-			"WS_DEV_LOG_DIR="+o.LogDir,
-		)
+		cmd.Env = append(os.Environ(), tasks.Env(tasks.Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase}, o.LogDir)...)
 		for k, v := range p.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
@@ -239,27 +223,12 @@ func Run(o Opts) error {
 	return nil
 }
 
-func buildArgv(cfg *config.RepoConfig, cmd string, v Vars) ([]string, error) {
-	expanded, err := Expand(cmd, v)
+func buildArgv(cfg *config.RepoConfig, cmd string, v tasks.Vars) ([]string, error) {
+	expanded, err := tasks.Expand(cmd, v)
 	if err != nil {
 		return nil, err
 	}
 	return tasks.BuildArgv(cfg, expanded, nil), nil
-}
-
-// Expand evaluates a command string as a text/template against the worktree
-// vars ({{.Worktree}} / {{.PortBase}} / {{.Root}} / {{.Dir}}). It is shared by
-// process cmd expansion and by setup commands (see RunSetup).
-func Expand(cmd string, v Vars) (string, error) {
-	tmpl, err := template.New("cmd").Parse(cmd)
-	if err != nil {
-		return "", fmt.Errorf("parse cmd template: %w", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, v); err != nil {
-		return "", fmt.Errorf("expand cmd template: %w", err)
-	}
-	return buf.String(), nil
 }
 
 func copyTee(src io.Reader, logFile io.Writer, w io.Writer, prefix, name string, filter *outputFilter, outCh chan<- outLine) {

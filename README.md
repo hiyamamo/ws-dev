@@ -160,15 +160,15 @@ repos:
 
 Config file path resolves in this order: `$WS_DEV_CONFIG` > `$XDG_CONFIG_HOME/ws-dev/config.yml` > `~/.config/ws-dev/config.yml`.
 
-Template variables available inside `processes.<name>.cmd`:
+Template variables available inside `processes.<name>.cmd`, `tasks`, and `setup`:
 - `{{.Worktree}}` — worktree name
 - `{{.PortBase}}` — base port
 - `{{.Root}}` — main worktree root (absolute)
 - `{{.Dir}}` — the worktree directory where the process runs (absolute)
 
-Each process receives the following environment variables:
+Each process and task receives the following environment variables:
 - `WS_DEV_WORKTREE`, `WS_DEV_ROOT`, `WS_DEV_DIR`, `WS_DEV_PORT_BASE`, `WS_DEV_LOG_DIR`
-- Plus anything listed under `processes.<name>.env`.
+- Plus anything listed under `processes.<name>.env` (processes only).
 
 ### Setup commands
 

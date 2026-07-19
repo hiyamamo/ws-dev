@@ -107,16 +107,7 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 	}
 	defer func() { _ = os.Remove(pidPath) }()
 
-	if portBase == 0 {
-		if v := os.Getenv("WS_DEV_PORT_BASE"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil {
-				portBase = n
-			}
-		}
-	}
-	if portBase == 0 {
-		portBase = 3000
-	}
+	portBase = resolvePortBase(portBase)
 
 	logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
 
