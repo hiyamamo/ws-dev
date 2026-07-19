@@ -117,7 +117,8 @@ Then edit `config.yml` and add an entry under `repos:` for the printed key.
 ```yaml
 repos:
   # Keyed by git remote. ssh and https forms match interchangeably
-  # (git@github.com:owner/repo.git == https://github.com/owner/repo).
+  # (git@github.com:owner/repo.git == https://github.com/owner/repo), so
+  # add only ONE entry per repo — two keys for the same repo are rejected.
   github.com/owner/repo:
     log_dir: log                       # log dir per worktree (default: log)
 

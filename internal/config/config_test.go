@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -79,6 +80,28 @@ func TestLoadAndLookup(t *testing.T) {
 
 	if _, ok := c.Lookup("git@github.com:other/missing.git"); ok {
 		t.Error("Lookup of unknown repo should fail")
+	}
+}
+
+func TestLoadDuplicateKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	src := `repos:
+  git@github.com:owner/repo.git:
+    log_dir: a
+  https://github.com/owner/repo:
+    log_dir: b
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for keys normalizing to the same repo")
+	}
+	for _, want := range []string{"git@github.com:owner/repo.git", "https://github.com/owner/repo", "github.com/owner/repo"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
 	}
 }
 

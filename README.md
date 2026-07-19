@@ -132,7 +132,8 @@ whether a server is currently running and for which worktree.
 ```yaml
 repos:
   # Keyed by git remote. ssh and https forms of the same repo match
-  # interchangeably (git@github.com:owner/repo.git == https://github.com/owner/repo).
+  # interchangeably (git@github.com:owner/repo.git == https://github.com/owner/repo),
+  # so add only ONE entry per repo — two keys for the same repo are rejected.
   github.com/owner/repo:
     log_dir: log
 
