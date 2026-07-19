@@ -55,6 +55,66 @@ func TestRunStartFailureStopsStartedProcesses(t *testing.T) {
 	}
 }
 
+// TestRunAbnormalExitStopsAll verifies that one process crashing takes the
+// whole run down with an error instead of leaving a half-dead server.
+func TestRunAbnormalExitStopsAll(t *testing.T) {
+	dir := t.TempDir()
+	var out, errOut bytes.Buffer
+	o := Opts{
+		Cfg: &config.RepoConfig{Processes: map[string]config.Process{
+			"a-sleeper": {Cmd: "sleep 30"},
+			"b-crash":   {Cmd: `sh -c "exit 3"`},
+		}},
+		Worktree: "wt",
+		Dir:      dir,
+		Root:     dir,
+		LogDir:   filepath.Join(dir, "log"),
+		Stdout:   &out,
+		Stderr:   &errOut,
+	}
+	start := time.Now()
+	err := Run(o)
+	if err == nil {
+		t.Fatal("expected an error from the crashed process")
+	}
+	if !strings.Contains(err.Error(), "b-crash") {
+		t.Errorf("error should name the crashed process, got: %v", err)
+	}
+	// Well under sleep's 30s: the sleeper must have been taken down too.
+	if d := time.Since(start); d > 10*time.Second {
+		t.Fatalf("Run took %v; remaining processes were not stopped", d)
+	}
+}
+
+// TestRunCleanExitKeepsOthers verifies that a process finishing with status 0
+// does not take the others down: the run ends without error once every
+// process has exited on its own.
+func TestRunCleanExitKeepsOthers(t *testing.T) {
+	dir := t.TempDir()
+	var out, errOut bytes.Buffer
+	o := Opts{
+		Cfg: &config.RepoConfig{Processes: map[string]config.Process{
+			"a-oneshot": {Cmd: "true"},
+			"b-sleeper": {Cmd: "sleep 1"},
+		}},
+		Worktree: "wt",
+		Dir:      dir,
+		Root:     dir,
+		LogDir:   filepath.Join(dir, "log"),
+		Stdout:   &out,
+		Stderr:   &errOut,
+	}
+	if err := Run(o); err != nil {
+		t.Fatalf("clean exits must not fail the run: %v", err)
+	}
+	if !strings.Contains(out.String(), "a-oneshot exited cleanly") {
+		t.Errorf("missing clean-exit message, out=%q", out.String())
+	}
+	if !strings.Contains(out.String(), "b-sleeper exited cleanly") {
+		t.Errorf("sleeper should have finished its full second, out=%q", out.String())
+	}
+}
+
 // manyLines builds "<name>-0\n<name>-1\n..." with n lines, used to generate
 // enough concurrent output to surface interleaving without a real process.
 func manyLines(name string, n int) string {
