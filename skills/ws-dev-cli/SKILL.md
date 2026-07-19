@@ -67,6 +67,11 @@ Flags:
 Order of events on each start: stop prior server → run `setup` commands → start
 processes. A failing `setup` step aborts the start (see **Setup commands**).
 
+**Crash behavior:** if any process exits abnormally (non-zero status), the
+whole server shuts down and `ws-dev server` exits non-zero — no half-dead
+servers. A process that exits cleanly (status 0, e.g. a one-shot build step)
+leaves the others running.
+
 **Foreground vs background:** the foreground run stops only when you Ctrl-C it or
 another `ws-dev server` / `ws-dev server stop` arrives. `-b` re-execs itself in a
 new session and exits; everything (including `setup`) then runs in the detached
@@ -183,6 +188,9 @@ its output lands in `server.log`.
 - **"server won't start" / aborts immediately** — almost always a failing
   `setup` step (it aborts before processes start). In background mode the error
   is in `server.log`; run foreground (`ws-dev server <wt>`) to see it inline.
+- **Server stopped by itself** — one process exited non-zero, which stops the
+  whole server by design. `ws-dev logs <wt> <name>` (or `server.log` for `-b`
+  runs) shows which one and why.
 - **A previous app is still holding the port** — a new `ws-dev server` stops the
   prior one automatically, but a process started outside ws-dev won't be. Use
   `ws-dev server stop` and check for stragglers.

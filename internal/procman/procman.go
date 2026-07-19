@@ -134,6 +134,11 @@ func Run(o Opts) error {
 	var mu sync.Mutex
 	children := map[string]*exec.Cmd{}
 
+	// First abnormal exit (non-zero status outside a shutdown we initiated).
+	// Buffered so the reporting goroutine never blocks; later failures during
+	// the resulting shutdown are dropped.
+	failCh := make(chan error, 1)
+
 	// A failure while starting process N must still stop processes 1..N-1
 	// (and wait for their goroutines), so errors break out to the shared
 	// shutdown path below instead of returning here.
@@ -213,6 +218,10 @@ func Run(o Opts) error {
 			mu.Unlock()
 			if err != nil {
 				pr.statusf(o.Stdout, "%s exited: %v", name, err)
+				select {
+				case failCh <- fmt.Errorf("process %s exited: %w", name, err):
+				default:
+				}
 			} else {
 				pr.statusf(o.Stdout, "%s exited cleanly", name)
 			}
@@ -249,9 +258,25 @@ func Run(o Opts) error {
 	select {
 	case sig := <-sigCh:
 		pr.statusf(o.Stdout, "received %s, shutting down", sig)
+	case err := <-failCh:
+		// One process crashed: take the rest down instead of running half a
+		// server, and propagate the failure as a non-zero exit. Exits during
+		// the shutdown below resolve no select case, so they are not
+		// misreported as new failures.
+		pr.statusf(o.Stdout, "stopping remaining processes")
+		killAll(pr, o.Stdout, snapshot(), allDone)
+		pr.close()
+		return err
 	case <-allDone:
 		pr.close() // flush everything queued before returning
-		return nil
+		// Everything already exited on its own; still fail the run when one
+		// of them was an abnormal exit that raced allDone in this select.
+		select {
+		case err := <-failCh:
+			return err
+		default:
+			return nil
+		}
 	}
 
 	killAll(pr, o.Stdout, snapshot(), allDone)

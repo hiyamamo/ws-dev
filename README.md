@@ -127,6 +127,10 @@ same repo first (SIGTERM, then SIGKILL on timeout). Running multiple worktrees
 in parallel is not supported, to avoid port conflicts. `ws-dev status` shows
 whether a server is currently running and for which worktree.
 
+If any process exits abnormally (non-zero status), the whole server shuts down
+and `ws-dev server` exits non-zero; a process that exits cleanly leaves the
+others running.
+
 ## `~/.config/ws-dev/config.yml`
 
 ```yaml

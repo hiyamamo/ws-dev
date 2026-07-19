@@ -71,7 +71,7 @@ tar xzf ws-dev_*_linux_amd64.tar.gz && sudo mv ws-dev /usr/local/bin/
 | `internal/config` | Parses `~/.config/ws-dev/config.yml` (`repos:` map). `Lookup(remote)` / `NormalizeRemote` match repos by git remote regardless of ssh/https form; `Load` rejects two keys normalizing to the same repo (map order would otherwise pick one nondeterministically). `DefaultPath()` honors `$WS_DEV_CONFIG` / `$XDG_CONFIG_HOME`. |
 | `internal/git` | Thin git wrappers (`Remote`, `CommonDir`, `Worktrees`) plus pure helpers (`ParseWorktrees`, `ResolveWorktree`, `CurrentWorktree`, `MainRoot`). |
 | `internal/tasks` | Runs template-expanded task commands prefixed with `exec_wrapper`, inheriting stdio, with the shared `WS_DEV_*` env. Also home of the shared `Vars` / `Expand` / `Env` helpers used by `procman`. |
-| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `tasks.Expand`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
+| `internal/procman` | Procfile-equivalent parallel process manager. Expands `{{.Worktree}}` etc. via `tasks.Expand`, places each process in its own pgid via setpgid, and cleans up with SIGTERM/SIGKILL (`killAll`, shared by signal, start-failure, and crash paths). An abnormal (non-zero) process exit stops the whole run and makes `Run` return an error, so `ws-dev server` exits non-zero; clean exits leave the rest running. `RunSetup` runs the config's `setup` commands (via `sh -c`) before the processes start. |
 | `internal/mcp` | stdio JSON-RPC MCP server implementation (`list_logs` / `tail_log` / `truncate_log` / `search_log`) |
 
 ## Agent skills (keep in sync with the CLI)
