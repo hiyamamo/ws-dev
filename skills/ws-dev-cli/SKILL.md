@@ -86,7 +86,9 @@ ws-dev logs feature-x web -f      # follow (tail -f)
 
 Flags: `-n`/`--lines` (default 100), `-f`/`--follow`, `--log-dir`. With no
 `<name>`, it lists `*.log` newest-mtime first with sizes. `-f` is the right
-answer for *live* following; the MCP `tail_log` tool is only a snapshot.
+answer for *live* following; the MCP `tail_log` tool is only a snapshot. `-f`
+keeps following across truncation (e.g. after the MCP `truncate_log` tool) by
+restarting from the top when the file shrinks.
 
 ### `ws-dev run` / `ws-dev tasks` — one-off tasks
 
