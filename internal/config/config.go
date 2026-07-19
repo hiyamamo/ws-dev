@@ -18,6 +18,7 @@ type Process struct {
 // RepoConfig holds the per-repository settings looked up by remote URL.
 type RepoConfig struct {
 	LogDir      string             `yaml:"log_dir,omitempty"`
+	FreshLogs   bool               `yaml:"fresh_logs,omitempty"`
 	ExecWrapper []string           `yaml:"exec_wrapper,omitempty"`
 	Setup       []string           `yaml:"setup,omitempty"`
 	Processes   map[string]Process `yaml:"processes,omitempty"`

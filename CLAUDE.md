@@ -126,6 +126,8 @@ A worktree name is resolved against `git worktree list` by directory basename (`
 
 Command-line flag `--log-dir` -> environment variable `WS_DEV_LOG_DIR` -> `log_dir` in config -> default `log`. The base is the worktree directory. This order is consistent across `server` / `logs` / `mcp`; `mcp` resolves relative to `cwd` (expected to be inside the worktree).
 
+Logs grow by appending across runs; `ws-dev server --fresh-logs` (or `fresh_logs: true` in config) truncates every `*.log` in the log dir after the prior server is stopped and before `setup` runs.
+
 ### Template expansion (processes / tasks / setup)
 
 `processes.<name>.cmd`, `tasks.<name>`, and `setup` entries are evaluated as a Go `text/template` (`tasks.Expand`):

@@ -63,6 +63,9 @@ Flags:
 - `--log-dir <path>` — log directory relative to the worktree (overrides config
   and `$WS_DEV_LOG_DIR`).
 - `-b`, `--background` — detach and return immediately.
+- `--fresh-logs` — truncate the previous run's `*.log` files before starting
+  (same as `fresh_logs: true` in config). Logs otherwise grow by appending
+  across runs.
 
 Order of events on each start: stop prior server → run `setup` commands → start
 processes. A failing `setup` step aborts the start (see **Setup commands**).
@@ -128,6 +131,7 @@ repos:
   # add only ONE entry per repo — two keys for the same repo are rejected.
   github.com/owner/repo:
     log_dir: log                       # log dir per worktree (default: log)
+    fresh_logs: true                   # truncate *.log on each server start (default: false)
 
     # Optional wrapper applied to every process AND task (not to setup).
     exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]
