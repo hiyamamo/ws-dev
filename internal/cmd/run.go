@@ -28,6 +28,7 @@ first argument is the task name.`,
   ws-dev run branch-a migrate VERSION=20240101`,
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
+		ValidArgsFunction:  completeRunArgs,
 		RunE: func(_ *cobra.Command, args []string) error {
 			rc, err := loadRepoCtx()
 			if err != nil {
