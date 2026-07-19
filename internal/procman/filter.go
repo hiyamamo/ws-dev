@@ -1,8 +1,6 @@
 package procman
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"sync"
 
@@ -38,10 +36,12 @@ func (f *outputFilter) cycle() string {
 
 // setupInteractive enables Tab-to-switch output filtering when the server runs
 // on an interactive terminal. Pressing Tab cycles which process's output is
-// shown (all -> first -> ... -> last -> all). It returns a restore func that
-// puts the terminal back to its previous mode, or nil when no interactive
-// terminal is attached (e.g. piped output or fewer than two processes).
-func setupInteractive(filter *outputFilter, status io.Writer) func() {
+// shown (all -> first -> ... -> last -> all). Notifications go through statusf
+// so they serialize with process output on the console. It returns a restore
+// func that puts the terminal back to its previous mode, or nil when no
+// interactive terminal is attached (e.g. piped output or fewer than two
+// processes).
+func setupInteractive(filter *outputFilter, statusf func(format string, args ...any)) func() {
 	if len(filter.names) < 2 {
 		return nil
 	}
@@ -54,7 +54,7 @@ func setupInteractive(filter *outputFilter, status io.Writer) func() {
 		return nil
 	}
 
-	_, _ = fmt.Fprintln(status, "[ws-dev] press Tab to switch visible output (now: all)")
+	statusf("press Tab to switch visible output (now: all)")
 
 	go func() {
 		buf := make([]byte, 1)
@@ -64,7 +64,7 @@ func setupInteractive(filter *outputFilter, status io.Writer) func() {
 				return
 			}
 			if n == 1 && buf[0] == '\t' {
-				_, _ = fmt.Fprintf(status, "[ws-dev] showing: %s\n", filter.cycle())
+				statusf("showing: %s", filter.cycle())
 			}
 		}
 	}()
