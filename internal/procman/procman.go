@@ -2,7 +2,6 @@ package procman
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -105,9 +104,6 @@ func Run(o Opts) error {
 		return fmt.Errorf("create log dir: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
@@ -138,12 +134,16 @@ func Run(o Opts) error {
 	var mu sync.Mutex
 	children := map[string]*exec.Cmd{}
 
+	// A failure while starting process N must still stop processes 1..N-1
+	// (and wait for their goroutines), so errors break out to the shared
+	// shutdown path below instead of returning here.
+	var startErr error
 	for _, name := range names {
 		p := o.Cfg.Processes[name]
 		argv, err := buildArgv(o.Cfg, p.Cmd, tasks.Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase})
 		if err != nil {
-			cancel()
-			return err
+			startErr = err
+			break
 		}
 		if len(argv) == 0 {
 			continue
@@ -151,11 +151,11 @@ func Run(o Opts) error {
 		logPath := filepath.Join(o.LogDir, name+".log")
 		logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 		if err != nil {
-			cancel()
-			return fmt.Errorf("open log %s: %w", logPath, err)
+			startErr = fmt.Errorf("open log %s: %w", logPath, err)
+			break
 		}
 
-		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = o.Dir
 		cmd.Env = append(os.Environ(), tasks.Env(tasks.Vars{Worktree: o.Worktree, Root: o.Root, Dir: o.Dir, PortBase: o.PortBase}, o.LogDir)...)
 		for k, v := range p.Env {
@@ -167,19 +167,19 @@ func Run(o Opts) error {
 		outPipe, err := cmd.StdoutPipe()
 		if err != nil {
 			_ = logFile.Close()
-			cancel()
-			return err
+			startErr = err
+			break
 		}
 		errPipe, err := cmd.StderrPipe()
 		if err != nil {
 			_ = logFile.Close()
-			cancel()
-			return err
+			startErr = err
+			break
 		}
 		if err := cmd.Start(); err != nil {
 			_ = logFile.Close()
-			cancel()
-			return fmt.Errorf("start %s: %w", name, err)
+			startErr = fmt.Errorf("start %s: %w", name, err)
+			break
 		}
 
 		mu.Lock()
@@ -219,14 +219,32 @@ func Run(o Opts) error {
 		}()
 	}
 
-	// Wait for signal or for all children to exit. Every per-process goroutine
-	// (and its copyTee senders) is done once allDone closes; only the main
-	// goroutine sends to the printer afterwards, so it can safely close it.
+	// Every per-process goroutine (and its copyTee senders) is done once
+	// allDone closes; only the main goroutine sends to the printer afterwards,
+	// so it can safely close it.
 	allDone := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(allDone)
 	}()
+
+	snapshot := func() map[string]*exec.Cmd {
+		mu.Lock()
+		defer mu.Unlock()
+		s := make(map[string]*exec.Cmd, len(children))
+		for k, v := range children {
+			s[k] = v
+		}
+		return s
+	}
+
+	// A failed start leaves the earlier processes running: stop them exactly
+	// like a signal-triggered shutdown before surfacing the error.
+	if startErr != nil {
+		killAll(pr, o.Stdout, snapshot(), allDone)
+		pr.close()
+		return startErr
+	}
 
 	select {
 	case sig := <-sigCh:
@@ -236,14 +254,18 @@ func Run(o Opts) error {
 		return nil
 	}
 
-	// Graceful shutdown: SIGTERM to each process group, then SIGKILL after timeout.
-	mu.Lock()
-	snapshot := make(map[string]*exec.Cmd, len(children))
-	for k, v := range children {
-		snapshot[k] = v
-	}
-	mu.Unlock()
-	for _, c := range snapshot {
+	killAll(pr, o.Stdout, snapshot(), allDone)
+	pr.close() // flush everything queued before returning
+	return nil
+}
+
+// killAll is the one shutdown path, shared by signal-triggered stops and
+// failed starts: SIGTERM to every child's process group, escalating to SIGKILL
+// when they have not all exited (allDone) within 5 seconds. Signaling the
+// group (-pid) reaches grandchildren that killing only the direct child (as
+// exec.CommandContext's cancel would) leaves running.
+func killAll(pr *printer, status io.Writer, children map[string]*exec.Cmd, allDone <-chan struct{}) {
+	for _, c := range children {
 		if c.Process != nil {
 			_ = syscall.Kill(-c.Process.Pid, syscall.SIGTERM)
 		}
@@ -251,16 +273,14 @@ func Run(o Opts) error {
 	select {
 	case <-allDone:
 	case <-time.After(5 * time.Second):
-		pr.statusf(o.Stdout, "timeout, sending SIGKILL")
-		for _, c := range snapshot {
+		pr.statusf(status, "timeout, sending SIGKILL")
+		for _, c := range children {
 			if c.Process != nil {
 				_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
 			}
 		}
 		<-allDone
 	}
-	pr.close() // flush everything queued before returning
-	return nil
 }
 
 func buildArgv(cfg *config.RepoConfig, cmd string, v tasks.Vars) ([]string, error) {
