@@ -44,7 +44,10 @@ func DefaultPath() string {
 	return filepath.Join(base, "ws-dev", "config.yml")
 }
 
-// Load reads and parses the config file at path.
+// Load reads and parses the config file at path. Two repos keys that
+// normalize to the same remote are rejected: Lookup matches after
+// normalization, so such entries would be picked nondeterministically (map
+// order) otherwise.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -53,6 +56,18 @@ func Load(path string) (*Config, error) {
 	c := &Config{}
 	if err := yaml.Unmarshal(data, c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	seen := map[string]string{}
+	for key := range c.Repos {
+		norm := NormalizeRemote(key)
+		if prev, ok := seen[norm]; ok {
+			first, second := prev, key
+			if second < first {
+				first, second = second, first
+			}
+			return nil, fmt.Errorf("parse %s: repos keys %q and %q both refer to %q; keep one entry", path, first, second, norm)
+		}
+		seen[norm] = key
 	}
 	return c, nil
 }
