@@ -106,6 +106,7 @@ recent `ws-dev server` run.
 | `ws-dev init` | Create `~/.config/ws-dev/config.yml` (if missing) and print the config key for the current repo. |
 | `ws-dev server [<worktree>]` | Start `processes` in parallel inside the worktree. Any prior `ws-dev server` for the repo is stopped first. |
 | `ws-dev server stop` | Stop the current server. |
+| `ws-dev status` | Show whether the server is running (pid) and for which worktree. |
 | `ws-dev logs [<worktree>] [<name>]` | List `*.log` or tail a specific log. |
 | `ws-dev run [<worktree>] <task> [args...]` | Run a task defined under `tasks:`; extra args pass through. |
 | `ws-dev tasks` | List tasks defined for the current repo. |
@@ -123,7 +124,8 @@ Flags:
 (`<git-common-dir>/ws-dev/`, i.e. inside `.git`, never committed and shared by
 all worktrees). Starting a new server stops any prior `ws-dev server` for the
 same repo first (SIGTERM, then SIGKILL on timeout). Running multiple worktrees
-in parallel is not supported, to avoid port conflicts.
+in parallel is not supported, to avoid port conflicts. `ws-dev status` shows
+whether a server is currently running and for which worktree.
 
 ## `~/.config/ws-dev/config.yml`
 
