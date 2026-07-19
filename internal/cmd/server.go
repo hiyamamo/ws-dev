@@ -28,19 +28,21 @@ func newServerCmd() *cobra.Command {
 		portBase   int
 		logDir     string
 		background bool
+		freshLogs  bool
 	)
 	c := &cobra.Command{
 		Use:   "server [<worktree>]",
 		Short: "Start configured processes in a worktree (stops any prior server first; defaults to the repository root when the worktree is omitted)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runServer(firstArg(args), portBase, logDir, background)
+			return runServer(firstArg(args), portBase, logDir, background, freshLogs)
 		},
 		ValidArgsFunction: completeWorktrees,
 	}
 	c.Flags().IntVar(&portBase, "port-base", 0, "Base port exposed as {{.PortBase}} / WS_DEV_PORT_BASE (default: 3000 or $WS_DEV_PORT_BASE)")
 	c.Flags().StringVar(&logDir, "log-dir", "", "Log directory relative to the worktree (overrides config and $WS_DEV_LOG_DIR)")
 	c.Flags().BoolVarP(&background, "background", "b", false, "Start the server detached in the background and return immediately (stop it with 'ws-dev server stop')")
+	c.Flags().BoolVar(&freshLogs, "fresh-logs", false, "Truncate the previous run's *.log files before starting (also enabled by fresh_logs: true in config)")
 	c.AddCommand(newServerStopCmd())
 	return c
 }
@@ -69,7 +71,7 @@ func newServerStopCmd() *cobra.Command {
 	}
 }
 
-func runServer(worktreeArg string, portBase int, logDirFlag string, background bool) error {
+func runServer(worktreeArg string, portBase int, logDirFlag string, background, freshLogs bool) error {
 	rc, err := loadRepoCtx()
 	if err != nil {
 		return err
@@ -85,7 +87,7 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 	// process lifecycle.
 	if background {
 		logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
-		return startBackground(worktreeArg, portBase, logDirFlag, logAbs)
+		return startBackground(worktreeArg, portBase, logDirFlag, logAbs, freshLogs)
 	}
 
 	sdir, err := stateDir()
@@ -111,6 +113,16 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 
 	logAbs := filepath.Join(dir, resolveLogDir(rc.Config, logDirFlag))
 
+	// Start from empty logs when asked (flag or config). The prior server is
+	// already stopped, so nothing is writing to them; in background mode this
+	// runs in the detached child, whose own server.log is opened with O_APPEND
+	// and therefore safe to truncate under itself.
+	if freshLogs || rc.Config.FreshLogs {
+		if err := truncateLogs(logAbs); err != nil {
+			return err
+		}
+	}
+
 	opts := procman.Opts{
 		Cfg:      rc.Config,
 		Worktree: worktree,
@@ -135,7 +147,28 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 // process in its own session, redirecting its combined output to server.log in
 // the log directory. The child runs the foreground flow, so it stops any prior
 // server and records its own pid; `ws-dev server stop` stops it like any other.
-func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string) error {
+// truncateLogs empties every *.log in dir. A missing dir means there is
+// nothing to clean.
+func truncateLogs(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
+			continue
+		}
+		if err := os.Truncate(filepath.Join(dir, e.Name()), 0); err != nil {
+			return fmt.Errorf("truncate %s: %w", e.Name(), err)
+		}
+	}
+	return nil
+}
+
+func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string, freshLogs bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate executable: %w", err)
@@ -161,6 +194,9 @@ func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string
 	}
 	if logDirFlag != "" {
 		args = append(args, "--log-dir", logDirFlag)
+	}
+	if freshLogs {
+		args = append(args, "--fresh-logs")
 	}
 
 	cmd := exec.Command(exe, args...)

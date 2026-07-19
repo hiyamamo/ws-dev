@@ -116,6 +116,7 @@ recent `ws-dev server` run.
 Flags:
 - `--log-dir <path>` — override log directory (falls back to `$WS_DEV_LOG_DIR`, then `log_dir` in config, then `log`).
 - `--port-base <n>` — base port exposed to processes as `{{.PortBase}}` / `$WS_DEV_PORT_BASE`.
+- `--fresh-logs` for `ws-dev server` — truncate the previous run's `*.log` before starting (or set `fresh_logs: true` in config); logs otherwise grow by appending across runs.
 - `-n <lines>` / `-f` for `ws-dev logs`.
 
 ### One server per repository
@@ -140,6 +141,7 @@ repos:
   # so add only ONE entry per repo — two keys for the same repo are rejected.
   github.com/owner/repo:
     log_dir: log
+    fresh_logs: true   # optional: truncate *.log on each server start
 
     # Optional wrapper applied to every process/task.
     # exec_wrapper: ["direnv", "exec", ".", "mise", "exec", "--"]

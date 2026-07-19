@@ -31,6 +31,7 @@ func TestLoadAndLookup(t *testing.T) {
 	src := `repos:
   github.com/owner/repo:
     log_dir: logs
+    fresh_logs: true
     exec_wrapper: ["mise", "exec", "--"]
     setup:
       - "direnv allow"
@@ -63,6 +64,9 @@ func TestLoadAndLookup(t *testing.T) {
 		}
 		if rc.LogDir != "logs" {
 			t.Errorf("LogDir = %q, want logs", rc.LogDir)
+		}
+		if !rc.FreshLogs {
+			t.Error("fresh_logs not parsed")
 		}
 		if rc.Processes["web"].Env["PORT"] != "3000" {
 			t.Errorf("env PORT not parsed: %+v", rc.Processes["web"])
