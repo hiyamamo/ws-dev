@@ -99,7 +99,7 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background b
 		return err
 	}
 
-	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+	if err := os.WriteFile(pidPath, []byte(pidFileContents(os.Getpid())), 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(worktreePath, []byte(worktree), 0o644); err != nil {
@@ -176,9 +176,33 @@ func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string
 	return nil
 }
 
+// pidFileContents renders the pid file: the pid on the first line and the
+// process start time on the second, so a later reader can tell a recycled pid
+// (e.g. after a reboot) apart from the recorded server.
+func pidFileContents(pid int) string {
+	s := strconv.Itoa(pid)
+	if st := processStartTime(pid); st != "" {
+		s += "\n" + st
+	}
+	return s + "\n"
+}
+
+// processStartTime returns the start time of pid as reported by
+// `ps -o lstart=`, or "" when it cannot be determined. The value is only ever
+// compared for equality, so its exact format does not matter.
+func processStartTime(pid int) string {
+	out, err := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // readServerPid reads pidPath and reports the recorded pid and whether that
-// process is currently alive (checked with signal 0). A missing, malformed, or
-// stale pid file yields alive=false; stale files are removed on the way.
+// process is currently alive (checked with signal 0) and still the process the
+// file was written for (start time comparison, when recorded). A missing,
+// malformed, or stale pid file yields alive=false; stale files are removed on
+// the way.
 func readServerPid(pidPath string) (pid int, alive bool, err error) {
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
@@ -187,7 +211,8 @@ func readServerPid(pidPath string) (pid int, alive bool, err error) {
 		}
 		return 0, false, err
 	}
-	pid, err = strconv.Atoi(strings.TrimSpace(string(data)))
+	lines := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)
+	pid, err = strconv.Atoi(strings.TrimSpace(lines[0]))
 	if err != nil || pid <= 0 {
 		_ = os.Remove(pidPath)
 		return 0, false, nil
@@ -201,6 +226,16 @@ func readServerPid(pidPath string) (pid int, alive bool, err error) {
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
 		_ = os.Remove(pidPath)
 		return 0, false, nil
+	}
+	// Identity check: a recycled pid belongs to a process with a different
+	// start time than the one recorded at write time. Files without a recorded
+	// start time (written by older versions) skip this and rely on liveness.
+	if len(lines) == 2 {
+		recorded := strings.TrimSpace(lines[1])
+		if now := processStartTime(pid); recorded != "" && now != "" && now != recorded {
+			_ = os.Remove(pidPath)
+			return 0, false, nil
+		}
 	}
 	return pid, true, nil
 }

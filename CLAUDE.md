@@ -105,7 +105,7 @@ as if the feature always existed.
 
 `ws-dev server` keeps state under `<git-common-dir>/ws-dev/` (i.e. inside the shared `.git`, identical across all worktrees and never committed). If the previous ws-dev process is still alive it stops it with `SIGTERM` (then `SIGKILL` on timeout) before starting the new one. Running multiple worktrees in parallel is not supported (to avoid port conflicts).
 
-- `<git-common-dir>/ws-dev/server.pid` — our own PID
+- `<git-common-dir>/ws-dev/server.pid` — our own PID plus its start time (`ps -o lstart=`), compared on read so a recycled pid (e.g. after a reboot) is not mistaken for a live server
 - `<git-common-dir>/ws-dev/current-worktree` — most recent worktree (used by `ws-dev logs` when omitted)
 
 `ws-dev status` reads these two files (liveness via signal 0) to report whether a server is running and for which worktree; it needs no config entry, so it works in unregistered repos too.
