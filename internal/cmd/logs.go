@@ -128,14 +128,44 @@ func tailLog(path string, lines int, follow bool) error {
 		return nil
 	}
 	for {
-		n, err := io.Copy(os.Stdout, f)
+		wrote, err := followStep(f, os.Stdout)
 		if err != nil {
 			return err
 		}
-		if n == 0 {
+		if !wrote {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
+}
+
+// followStep copies newly appended data from f to w and reports whether any
+// was written. When the file shrank below the current read offset (e.g. the
+// MCP truncate_log tool emptied it), it restarts from the top like `tail -f`
+// instead of waiting forever past the new EOF.
+func followStep(f *os.File, w io.Writer) (bool, error) {
+	n, err := io.Copy(w, f)
+	if err != nil {
+		return n > 0, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+	pos, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return false, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if info.Size() >= pos {
+		return false, nil
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return false, err
+	}
+	n, err = io.Copy(w, f)
+	return n > 0, err
 }
 
 func printLastLines(f *os.File, n int) error {
