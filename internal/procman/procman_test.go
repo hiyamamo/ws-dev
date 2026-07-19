@@ -32,14 +32,7 @@ func TestCopyTeePrinterKeepsLinesIntact(t *testing.T) {
 	names := []string{"web", "api"}
 
 	var buf bytes.Buffer // only the printer writes here, so this is safe
-	outCh := make(chan outLine)
-	printDone := make(chan struct{})
-	go func() {
-		defer close(printDone)
-		for msg := range outCh {
-			_, _ = msg.w.Write(msg.data)
-		}
-	}()
+	pr := newPrinter()
 
 	filter := &outputFilter{names: names} // idx 0 => show all
 
@@ -50,12 +43,11 @@ func TestCopyTeePrinterKeepsLinesIntact(t *testing.T) {
 			defer wg.Done()
 			src := strings.NewReader(manyLines(name, linesPerProc))
 			prefix := name + " | "
-			copyTee(src, io.Discard, &buf, prefix, name, filter, outCh)
+			copyTee(src, io.Discard, &buf, prefix, name, filter, pr)
 		}(name)
 	}
-	wg.Wait()    // all senders done
-	close(outCh) // the one safe place to close
-	<-printDone  // drain before reading buf
+	wg.Wait()  // all senders done
+	pr.close() // flush before reading buf
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
 	if got, want := len(lines), linesPerProc*len(names); got != want {

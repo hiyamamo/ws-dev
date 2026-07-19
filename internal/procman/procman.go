@@ -38,6 +38,57 @@ type outLine struct {
 	data []byte    // prefix + line, ready to write as one unit
 }
 
+// printer serializes all console output — process lines and [ws-dev] status
+// messages alike — through one goroutine, so concurrent writers never split
+// each other's lines. Log files are not routed through it; only the console
+// writers are shared.
+type printer struct {
+	ch     chan outLine
+	done   chan struct{}
+	mu     sync.Mutex
+	closed bool
+}
+
+func newPrinter() *printer {
+	p := &printer{ch: make(chan outLine), done: make(chan struct{})}
+	go func() {
+		defer close(p.done)
+		for msg := range p.ch {
+			_, _ = msg.w.Write(msg.data)
+		}
+	}()
+	return p
+}
+
+// write queues one pre-formatted chunk to be written to w as a unit. After
+// close, late senders (e.g. the Tab-filter notifier goroutine, which outlives
+// Run) fall back to writing directly instead of panicking on a closed channel.
+func (p *printer) write(w io.Writer, data []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		_, _ = w.Write(data)
+		return
+	}
+	p.ch <- outLine{w: w, data: data}
+}
+
+// statusf queues a "[ws-dev] ..." status line.
+func (p *printer) statusf(w io.Writer, format string, args ...any) {
+	p.write(w, fmt.Appendf(nil, "[ws-dev] "+format+"\n", args...))
+}
+
+// close flushes everything queued and stops the printer goroutine. Callers
+// must ensure no copyTee sender is active (they are, transitively, waited on
+// before close is reached); the main goroutine is the only sender afterwards.
+func (p *printer) close() {
+	p.mu.Lock()
+	p.closed = true
+	close(p.ch)
+	p.mu.Unlock()
+	<-p.done
+}
+
 // Run starts all configured processes and blocks until a shutdown signal
 // is received or all child processes exit.
 func Run(o Opts) error {
@@ -75,27 +126,17 @@ func Run(o Opts) error {
 		}
 	}
 
+	pr := newPrinter()
 	filter := &outputFilter{names: names}
-	if restore := setupInteractive(filter, o.Stdout); restore != nil {
+	if restore := setupInteractive(filter, func(format string, args ...any) {
+		pr.statusf(o.Stdout, format, args...)
+	}); restore != nil {
 		defer restore()
 	}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	children := map[string]*exec.Cmd{}
-
-	// Single owner of the console writers: every copyTee sends formatted lines
-	// here instead of writing directly, so concurrent processes never split
-	// each other's prefix/line. outCh is closed once all senders are done;
-	// printDone signals that the printer has flushed everything.
-	outCh := make(chan outLine)
-	printDone := make(chan struct{})
-	go func() {
-		defer close(printDone)
-		for msg := range outCh {
-			_, _ = msg.w.Write(msg.data)
-		}
-	}()
 
 	for _, name := range names {
 		p := o.Cfg.Processes[name]
@@ -144,7 +185,7 @@ func Run(o Opts) error {
 		mu.Lock()
 		children[name] = cmd
 		mu.Unlock()
-		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] started %s (pid %d): %s\n", name, cmd.Process.Pid, strings.Join(argv, " "))
+		pr.statusf(o.Stdout, "started %s (pid %d): %s", name, cmd.Process.Pid, strings.Join(argv, " "))
 
 		wg.Add(1)
 		go func() {
@@ -157,11 +198,11 @@ func Run(o Opts) error {
 			ioWg.Add(2)
 			go func() {
 				defer ioWg.Done()
-				copyTee(outPipe, logFile, o.Stdout, prefix, name, filter, outCh)
+				copyTee(outPipe, logFile, o.Stdout, prefix, name, filter, pr)
 			}()
 			go func() {
 				defer ioWg.Done()
-				copyTee(errPipe, logFile, o.Stderr, prefix, name, filter, outCh)
+				copyTee(errPipe, logFile, o.Stderr, prefix, name, filter, pr)
 			}()
 			ioWg.Wait()
 
@@ -171,28 +212,27 @@ func Run(o Opts) error {
 			delete(children, name)
 			mu.Unlock()
 			if err != nil {
-				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited: %v\n", name, err)
+				pr.statusf(o.Stdout, "%s exited: %v", name, err)
 			} else {
-				_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] %s exited cleanly\n", name)
+				pr.statusf(o.Stdout, "%s exited cleanly", name)
 			}
 		}()
 	}
 
-	// Wait for signal or for all children to exit. Once every copyTee has
-	// returned (wg.Wait), no sender remains, so this is the one safe place to
-	// close outCh.
+	// Wait for signal or for all children to exit. Every per-process goroutine
+	// (and its copyTee senders) is done once allDone closes; only the main
+	// goroutine sends to the printer afterwards, so it can safely close it.
 	allDone := make(chan struct{})
 	go func() {
 		wg.Wait()
-		close(outCh)
 		close(allDone)
 	}()
 
 	select {
 	case sig := <-sigCh:
-		_, _ = fmt.Fprintf(o.Stdout, "[ws-dev] received %s, shutting down\n", sig)
+		pr.statusf(o.Stdout, "received %s, shutting down", sig)
 	case <-allDone:
-		<-printDone // drain: let the printer flush before returning
+		pr.close() // flush everything queued before returning
 		return nil
 	}
 
@@ -211,7 +251,7 @@ func Run(o Opts) error {
 	select {
 	case <-allDone:
 	case <-time.After(5 * time.Second):
-		_, _ = fmt.Fprintln(o.Stdout, "[ws-dev] timeout, sending SIGKILL")
+		pr.statusf(o.Stdout, "timeout, sending SIGKILL")
 		for _, c := range snapshot {
 			if c.Process != nil {
 				_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
@@ -219,7 +259,7 @@ func Run(o Opts) error {
 		}
 		<-allDone
 	}
-	<-printDone // drain: let the printer flush before returning
+	pr.close() // flush everything queued before returning
 	return nil
 }
 
@@ -231,7 +271,7 @@ func buildArgv(cfg *config.RepoConfig, cmd string, v tasks.Vars) ([]string, erro
 	return tasks.BuildArgv(cfg, expanded, nil), nil
 }
 
-func copyTee(src io.Reader, logFile io.Writer, w io.Writer, prefix, name string, filter *outputFilter, outCh chan<- outLine) {
+func copyTee(src io.Reader, logFile io.Writer, w io.Writer, prefix, name string, filter *outputFilter, pr *printer) {
 	r := bufio.NewReader(src)
 	for {
 		line, err := r.ReadBytes('\n')
@@ -244,7 +284,7 @@ func copyTee(src io.Reader, logFile io.Writer, w io.Writer, prefix, name string,
 				buf := make([]byte, 0, len(prefix)+len(line))
 				buf = append(buf, prefix...)
 				buf = append(buf, line...)
-				outCh <- outLine{w: w, data: buf}
+				pr.write(w, buf)
 			}
 		}
 		if err != nil {
