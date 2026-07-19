@@ -143,10 +143,6 @@ func runServer(worktreeArg string, portBase int, logDirFlag string, background, 
 	return procman.Run(opts)
 }
 
-// startBackground re-execs `ws-dev server` (without --background) as a detached
-// process in its own session, redirecting its combined output to server.log in
-// the log directory. The child runs the foreground flow, so it stops any prior
-// server and records its own pid; `ws-dev server stop` stops it like any other.
 // truncateLogs empties every *.log in dir. A missing dir means there is
 // nothing to clean.
 func truncateLogs(dir string) error {
@@ -168,6 +164,10 @@ func truncateLogs(dir string) error {
 	return nil
 }
 
+// startBackground re-execs `ws-dev server` (without --background) as a detached
+// process in its own session, redirecting its combined output to server.log in
+// the log directory. The child runs the foreground flow, so it stops any prior
+// server and records its own pid; `ws-dev server stop` stops it like any other.
 func startBackground(worktreeArg string, portBase int, logDirFlag, logAbs string, freshLogs bool) error {
 	exe, err := os.Executable()
 	if err != nil {
